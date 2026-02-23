@@ -26,11 +26,19 @@ interface IVault {
     /* ~~~~ Custom Errors ~~~~ */
     error ZeroAmount();
     error ZeroRange();
+    error RangeTooSmall();
+    error RangeTooLarge();
     error PositionNotActive();
     error NotPositionOwner();
     error BadShares();
     error InsufficientLiquidity();
     error NotLiquidatable();
+    error FeeTooHigh();
+    error BountyTooHigh();
+    error ZeroAnchorCollateral();
+    error AnchorNotOwned();
+    error NotGuardian();
+    error TransferAmountMismatch();
 
     /* ~~~~ Events ~~~~ */
     event Open(
@@ -70,6 +78,8 @@ interface IVault {
     );
     event Deposit(address indexed from, uint256 assets, uint256 shares);
     event Withdraw(address indexed from, uint256 assets, uint256 shares);
+    event PayoutShortfall(uint256 indexed positionId, address indexed owner, uint256 entitled, uint256 paid);
+    event FeesUpdated(uint16 vaultE2, uint16 protocolE2, uint256 liquidatorE18);
 
     /* ~~~~ Initialization ~~~~ */
     function init(
@@ -142,4 +152,8 @@ interface IVault {
 
     /* ~~~~ Admin Functions ~~~~ */
     function setFees(uint16 vaultE2, uint16 protocolE2, uint256 liquidatorE18) external;
+    function pause() external;
+    function unpause() external;
+    function setGuardian(address _guardian) external;
+    function guardian() external view returns (address);
 }
