@@ -10,11 +10,13 @@ import "@uniswap/v3-core/contracts/libraries/TickMath.sol";
 
 import { FixedPointMathLib as FPM } from "solmate/utils/FixedPointMathLib.sol";
 
+import "./interfaces/IVaultMath.sol";
+
 /// @title VaultMath
 /// @author sLiq Protocol
 /// @notice Math library for the sLiq Synthetic Concentrated-Liquidity Vault System
 /// @dev Provides fee calculation, price conversion, IL estimation, and effective liquidity helpers
-contract VaultMath {
+contract VaultMath is IVaultMath {
     /* ~~~~ Custom Errors ~~~~ */
     error ZeroPrice();
     error SqrtOverflow();
@@ -44,19 +46,25 @@ contract VaultMath {
         (,, uint256 upper0, uint256 upper1,,,,) = pool.ticks(tickUpper);
         uint256 fg0Now;
         uint256 fg1Now;
-        if (tickCurrent < tickLower) {
-            fg0Now = lower0 - upper0;
-            fg1Now = lower1 - upper1;
-        } else if (tickCurrent >= tickUpper) {
-            fg0Now = upper0 - lower0;
-            fg1Now = upper1 - lower1;
-        } else {
-            fg0Now = fg0G - lower0 - upper0;
-            fg1Now = fg1G - lower1 - upper1;
+        uint256 add0;
+        uint256 add1;
+        // Uniswap V3 fee growth accumulators use unsigned overflow by design.
+        // Solidity 0.8+ checked arithmetic requires unchecked blocks here.
+        unchecked {
+            if (tickCurrent < tickLower) {
+                fg0Now = lower0 - upper0;
+                fg1Now = lower1 - upper1;
+            } else if (tickCurrent >= tickUpper) {
+                fg0Now = upper0 - lower0;
+                fg1Now = upper1 - lower1;
+            } else {
+                fg0Now = fg0G - lower0 - upper0;
+                fg1Now = fg1G - lower1 - upper1;
+            }
+            // delta feeGrowthInside * L / 2^128
+            add0 = FullMath.mulDiv(fg0Now - fg0Last, liquidity, 1 << 128);
+            add1 = FullMath.mulDiv(fg1Now - fg1Last, liquidity, 1 << 128);
         }
-        // delta feeGrowthInside * L / 2^128
-        uint256 add0 = FullMath.mulDiv(fg0Now - fg0Last, liquidity, 1 << 128);
-        uint256 add1 = FullMath.mulDiv(fg1Now - fg1Last, liquidity, 1 << 128);
 
         fee0 = uint256(owed0) + add0;
         fee1 = uint256(owed1) + add1;

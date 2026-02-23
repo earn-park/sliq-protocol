@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.30;
 
-import {Script, console} from "forge-std/Script.sol";
-import {VaultManager} from "src/VaultManager.sol";
+import { Script, console } from "forge-std/Script.sol";
+import { VaultManager } from "src/VaultManager.sol";
 
 /// @title DeployVault -- deploy a new vault proxy for a Uniswap V3 pool
 /// @notice Creates a new Vault BeaconProxy via VaultManager.newVault().
@@ -24,9 +24,7 @@ contract DeployVault is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        address vault = VaultManager(manager).newVault(
-            pool, collateral, nfpm, anchorId, seq, feed
-        );
+        address vault = VaultManager(manager).newVault(pool, collateral, nfpm, anchorId, seq, feed);
 
         vm.stopBroadcast();
 

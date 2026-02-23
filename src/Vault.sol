@@ -7,12 +7,9 @@ pragma solidity ^0.8.30;
 ///   Holds an Anchor NFT position, balances Short/Long PnL, ERC-4626-like share accounting.
 /// @dev Deployed as a BeaconProxy via VaultManager. Uses Initializable pattern.
 
-import "@openzeppelin/contracts/proxy/Clones.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "@uniswap/v3-core/contracts/libraries/FullMath.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/INonfungiblePositionManager.sol";
@@ -36,14 +33,27 @@ import "./VaultMath.sol";
 contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
+    /* ~~~~ Constants ~~~~ */
+    uint256 private constant DEAD_SHARES = 1e3;
+    uint256 private constant MAX_TOTAL_FEE_E2 = 2000;
+    uint256 private constant MAX_BOUNTY_E18 = 1e18;
+    uint256 private constant FEE_BUFFER_E18 = 13e17;
+    int24 private constant MIN_RANGE = 60;
+    int24 private constant MAX_RANGE = 100_000;
+    uint256 private constant STALENESS_THRESHOLD = 3600;
+
     /* ~~~~ Custom Errors ~~~~ */
     error ZeroAmount();
     error ZeroRange();
+    error RangeTooSmall();
+    error RangeTooLarge();
     error PositionNotActive();
     error NotPositionOwner();
     error BadShares();
     error InsufficientLiquidity();
     error NotLiquidatable();
+    error FeeTooHigh();
+    error BountyTooHigh();
 
     /* ~~~~ Immutable & basic config ~~~~ */
     IERC20 public collateralToken; // e.g. USDC
@@ -191,6 +201,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         feeVaultPercentE2 = 300;
         feeProtocolPercentE2 = 200;
         bountyLiquidatorE18 = 15e12;
+        nextPosId = 1;
 
         // Initial checkpoint
         cps.push(Checkpoint(0, 0, 0, 0, 0, 0));
@@ -213,7 +224,10 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         // status == 0 => sequencer UP, status == 1 => DOWN
         if (s == 0 && startedAt != 0 && block.timestamp - startedAt > 1 hours) {
             (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) = feed.latestRoundData();
-            if (answer > 0 && updatedAt != 0 && answeredInRound >= roundId) {
+            if (
+                answer > 0 && updatedAt != 0 && answeredInRound >= roundId
+                    && block.timestamp - updatedAt < STALENESS_THRESHOLD
+            ) {
                 uint8 dec = feed.decimals();
                 // Convert answer from feed decimals to 1e18
                 if (dec < 18) {
@@ -282,6 +296,8 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     {
         if (amount == 0) revert ZeroAmount();
         if (range <= 0) revert ZeroRange();
+        if (range < MIN_RANGE) revert RangeTooSmall();
+        if (range > MAX_RANGE) revert RangeTooLarge();
 
         lower = currentTick() - range;
         upper = currentTick() + range;
@@ -429,7 +445,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         uint256 liqShareE18 = FullMath.mulDiv(liqEff, 1e18, from.anchorCollateral);
         uint256 totalFee = to.totalFeeCum - from.totalFeeCum;
         uint256 totalTime = to.timestamp - from.timestamp;
-        uint256 wFee = FullMath.mulDiv(totalFee, liqShareE18, 13e17);
+        uint256 wFee = FullMath.mulDiv(totalFee, liqShareE18, FEE_BUFFER_E18);
 
         int24 ct = currentTick();
         int24 tickMid = p.tickLower + range;
@@ -541,53 +557,49 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         payout = result;
         bounty = bountyLiquidatorE18;
 
-        freezBalance = freezBalance - collateral;
-
-        if (payout > 0) {
-            uint256 balanceVault = collateralToken.balanceOf(address(this));
-            if (balanceVault > uint256(payout)) {
-                collateralToken.safeTransfer(p.owner, uint256(payout));
-            } else {
-                collateralToken.safeTransfer(p.owner, balanceVault);
-            }
-        }
-
         uint256 feeProtocol = (p.side == Side.Long ? fee : il) * uint256(feeProtocolPercentE2) / 10_000;
-        if (feeProtocol > 0) {
-            uint256 balanceVault = collateralToken.balanceOf(address(this));
-            if (balanceVault > feeProtocol) {
-                collateralToken.safeTransfer(owner(), feeProtocol);
-            } else {
-                collateralToken.safeTransfer(owner(), balanceVault);
-            }
-        }
-
-        p.active = false;
-        p.result = payout;
-
         int24 range = (p.tickUpper - p.tickLower) / 2;
         uint256 eff = vaultMath._effLiquidity(p.collateral, range, _anchorRange());
-        if (p.side == Side.Long) totalEffLong -= eff;
-        else totalEffShort -= eff;
         uint256 positionAmount = p.collateral;
+        Side positionSide = p.side;
+        Rolling positionRolling = p.rolling;
+        address positionOwner = p.owner;
+
+        // Effects: all state updates before external calls (CEI pattern)
+        freezBalance = freezBalance - collateral;
+        p.active = false;
+        p.result = payout;
+        if (positionSide == Side.Long) totalEffLong -= eff;
+        else totalEffShort -= eff;
+
+        // Interactions: external transfers after state is consistent
+        if (payout > 0) {
+            uint256 balanceVault = collateralToken.balanceOf(address(this));
+            uint256 transferAmt = balanceVault > uint256(payout) ? uint256(payout) : balanceVault;
+            collateralToken.safeTransfer(positionOwner, transferAmt);
+        }
+
+        if (feeProtocol > 0) {
+            uint256 balanceVault = collateralToken.balanceOf(address(this));
+            uint256 transferAmt = balanceVault > feeProtocol ? feeProtocol : balanceVault;
+            collateralToken.safeTransfer(owner(), transferAmt);
+        }
 
         if (
-            liquidation && p.rolling != Rolling.No && collateralToken.balanceOf(p.owner) >= positionAmount
-                && collateralToken.allowance(p.owner, address(this)) >= positionAmount
+            liquidation && positionRolling != Rolling.No && collateralToken.balanceOf(positionOwner) >= positionAmount
+                && collateralToken.allowance(positionOwner, address(this)) >= positionAmount
         ) {
-            Side rollingSide = p.side;
-            if (p.rolling == Rolling.InverseMinus) {
-                if (p.result < int256(positionAmount)) {
-                    if (rollingSide == Side.Long) rollingSide = Side.Short;
-                    else rollingSide = Side.Long;
+            Side rollingSide = positionSide;
+            if (positionRolling == Rolling.InverseMinus) {
+                if (payout < int256(positionAmount)) {
+                    rollingSide = positionSide == Side.Long ? Side.Short : Side.Long;
                 }
-            } else if (p.rolling == Rolling.InversePlus) {
-                if (p.result > int256(positionAmount)) {
-                    if (rollingSide == Side.Long) rollingSide = Side.Short;
-                    else rollingSide = Side.Long;
+            } else if (positionRolling == Rolling.InversePlus) {
+                if (payout > int256(positionAmount)) {
+                    rollingSide = positionSide == Side.Long ? Side.Short : Side.Long;
                 }
             }
-            _open(p.owner, rollingSide, range, positionAmount, p.rolling);
+            _open(positionOwner, rollingSide, range, positionAmount, positionRolling);
         } else {
             _checkpoint();
         }
@@ -639,13 +651,14 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         uint256 assetsBefore = _totalAssets() - freezBalance;
         collateralToken.safeTransferFrom(msg.sender, address(this), amount);
 
-        if (totalSupply() == 0 && assetsBefore <= 0) {
-            // First depositor: 1:1 ratio, or when no liquidity exists
-            shares = amount;
+        if (totalSupply() == 0 && assetsBefore == 0) {
+            // First depositor: lock DEAD_SHARES to prevent share inflation attack
+            shares = amount - DEAD_SHARES;
+            _mint(address(1), DEAD_SHARES);
         } else {
             shares = FullMath.mulDiv(amount, totalSupply(), assetsBefore);
-            if (shares < amount) shares = amount;
         }
+        if (shares == 0) revert ZeroAmount();
         _mint(msg.sender, shares);
 
         emit Deposit(msg.sender, amount, shares);
@@ -666,6 +679,8 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     }
 
     function setFees(uint16 vaultE2, uint16 protocolE2, uint256 liquidatorE18) external onlyOwner {
+        if (uint256(vaultE2) + uint256(protocolE2) > MAX_TOTAL_FEE_E2) revert FeeTooHigh();
+        if (liquidatorE18 > MAX_BOUNTY_E18) revert BountyTooHigh();
         feeVaultPercentE2 = vaultE2;
         feeProtocolPercentE2 = protocolE2;
         bountyLiquidatorE18 = liquidatorE18;
