@@ -198,6 +198,7 @@ contract VaultMath is IVaultMath {
     /// @param dt The tick delta
     /// @return percentE18 The price difference percentage scaled to 1e18
     function tickDiffPercentE18(int24 dt) public pure returns (uint256 percentE18) {
+        if (dt <= 0) return 0;
         uint256 p = FPM.rpow(
             1000100000000000000, // 1.0001 * 1e18
             uint256(int256(dt)),

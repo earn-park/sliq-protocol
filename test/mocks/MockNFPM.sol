@@ -18,6 +18,11 @@ contract MockNFPM {
     }
 
     mapping(uint256 => PositionData) public _positions;
+    mapping(uint256 => address) public _owners;
+
+    function setOwner(uint256 tokenId, address owner_) external {
+        _owners[tokenId] = owner_;
+    }
 
     function setPosition(
         uint256 tokenId,
@@ -88,8 +93,8 @@ contract MockNFPM {
         return 0;
     }
 
-    function ownerOf(uint256) external pure returns (address) {
-        return address(0);
+    function ownerOf(uint256 tokenId) external view returns (address) {
+        return _owners[tokenId];
     }
 
     function safeTransferFrom(address, address, uint256) external { }
