@@ -1,0 +1,18 @@
+# Code owners for sLiq Protocol
+# These owners will be automatically requested for review on PRs
+
+# Default owner for everything
+* @earn-park/core
+
+# Smart contracts require core team review
+src/ @earn-park/core
+test/ @earn-park/core
+
+# Security-sensitive files require explicit review
+SECURITY.md @earn-park/core
+docs/SECURITY.md @earn-park/core
+
+# CI and deployment configs
+.github/ @earn-park/core
+script/ @earn-park/core
+foundry.toml @earn-park/core

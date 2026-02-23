@@ -1,0 +1,19 @@
+{
+  "extends": "solhint:recommended",
+  "plugins": [],
+  "rules": {
+    "compiler-version": ["error", "^0.8.30"],
+    "func-visibility": ["warn", { "ignoreConstructors": true }],
+    "max-line-length": ["warn", 120],
+    "no-empty-blocks": "off",
+    "no-unused-vars": "error",
+    "reason-string": "off",
+    "custom-errors": "error",
+    "no-console": "error",
+    "no-global-import": "warn",
+    "func-name-mixedcase": "off",
+    "var-name-mixedcase": "off",
+    "const-name-snakecase": "off",
+    "immutable-vars-naming": "off"
+  }
+}
