@@ -585,4 +585,176 @@ contract VaultTest is Test {
         // newVault passes msg.sender as owner
         assertEq(vault.owner(), owner);
     }
+
+    // ---- Pausable ----
+
+    function test_Pause_ByOwner() public {
+        vault.pause();
+        assertTrue(vault.paused());
+    }
+
+    function test_Pause_ByGuardian() public {
+        vault.setGuardian(alice);
+        vm.prank(alice);
+        vault.pause();
+        assertTrue(vault.paused());
+    }
+
+    function test_RevertWhen_Pause_NotGuardianOrOwner() public {
+        vm.prank(bob);
+        vm.expectRevert(Vault.NotGuardian.selector);
+        vault.pause();
+    }
+
+    function test_Unpause_OnlyOwner() public {
+        vault.pause();
+        vault.unpause();
+        assertFalse(vault.paused());
+    }
+
+    function test_RevertWhen_Unpause_NotOwner() public {
+        vault.pause();
+        vm.prank(alice);
+        vm.expectRevert("Ownable: caller is not the owner");
+        vault.unpause();
+    }
+
+    function test_RevertWhen_Deposit_WhenPaused() public {
+        vault.pause();
+        vm.prank(alice);
+        vm.expectRevert("Pausable: paused");
+        vault.deposit(1000e6);
+    }
+
+    function test_RevertWhen_OpenLong_WhenPaused() public {
+        vault.deposit(10_000e6);
+        vault.pause();
+        vm.prank(alice);
+        vm.expectRevert("Pausable: paused");
+        vault.openLong(500, 100e6, Vault.Rolling.No);
+    }
+
+    function test_RevertWhen_OpenShort_WhenPaused() public {
+        vault.deposit(10_000e6);
+        vault.pause();
+        vm.prank(alice);
+        vm.expectRevert("Pausable: paused");
+        vault.openShort(500, 100e6, Vault.Rolling.No);
+    }
+
+    function test_Close_WorksWhenPaused() public {
+        vault.deposit(10_000e6);
+        vm.prank(alice);
+        uint256 id = vault.openLong(500, 100e6, Vault.Rolling.No);
+        vm.warp(block.timestamp + 1 hours);
+
+        vault.pause();
+
+        // Close should still work when paused (users must be able to exit)
+        vm.prank(alice);
+        vault.close(id);
+        (,,,,,,, bool active,) = vault.positions(id);
+        assertFalse(active);
+    }
+
+    function test_Withdraw_WorksWhenPaused() public {
+        vm.prank(alice);
+        vault.deposit(1000e6);
+
+        vault.pause();
+
+        // Withdraw should still work when paused
+        uint256 aliceShares = vault.balanceOf(alice);
+        vm.prank(alice);
+        vault.withdraw(aliceShares);
+        assertEq(vault.balanceOf(alice), 0);
+    }
+
+    // ---- Guardian ----
+
+    function test_SetGuardian() public {
+        vault.setGuardian(alice);
+        assertEq(vault.guardian(), alice);
+    }
+
+    function test_RevertWhen_SetGuardian_NotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert("Ownable: caller is not the owner");
+        vault.setGuardian(bob);
+    }
+
+    // ---- NextPosId ----
+
+    function test_Init_NextPosIdIsOne() public view {
+        assertEq(vault.nextPosId(), 1);
+    }
+
+    // ---- Range at boundaries ----
+
+    function test_Open_AtMinRange() public {
+        vault.deposit(10_000e6);
+        vm.prank(alice);
+        uint256 id = vault.openLong(60, 100e6, Vault.Rolling.No); // exactly at MIN_RANGE
+        assertGt(id, 0);
+    }
+
+    // ---- Invariant: freezBalance matches active positions ----
+
+    function test_FreezBalance_MatchesActivePositions() public {
+        vault.deposit(50_000e6);
+
+        vm.prank(alice);
+        vault.openLong(500, 100e6, Vault.Rolling.No);
+        vm.prank(bob);
+        vault.openShort(300, 200e6, Vault.Rolling.No);
+
+        assertEq(vault.freezBalance(), 300e6);
+
+        vm.warp(block.timestamp + 1 hours);
+
+        vm.prank(alice);
+        vault.close(1);
+
+        assertEq(vault.freezBalance(), 200e6);
+    }
+
+    // ---- Invariant: effective liquidity tracking ----
+
+    function test_EffLiquidity_ZeroAfterAllClosed() public {
+        vault.deposit(50_000e6);
+
+        vm.prank(alice);
+        vault.openLong(500, 100e6, Vault.Rolling.No);
+        vm.prank(bob);
+        vault.openShort(300, 200e6, Vault.Rolling.No);
+
+        assertGt(vault.totalEffLong(), 0);
+        assertGt(vault.totalEffShort(), 0);
+
+        vm.warp(block.timestamp + 1 hours);
+
+        vm.prank(alice);
+        vault.close(1);
+        vm.prank(bob);
+        vault.close(2);
+
+        assertEq(vault.totalEffLong(), 0);
+        assertEq(vault.totalEffShort(), 0);
+    }
+
+    // ---- Second depositor share pricing ----
+
+    function test_Deposit_SecondDepositorSharePricing() public {
+        vm.prank(alice);
+        vault.deposit(1000e6);
+
+        uint256 totalSupplyAfterFirst = vault.totalSupply();
+        assertEq(totalSupplyAfterFirst, 1000e6); // includes dead shares
+
+        vm.prank(bob);
+        uint256 bobShares = vault.deposit(2000e6);
+
+        // shares = 2000e6 * 1000e6 / 1000e6 = 2000e6
+        assertEq(bobShares, 2000e6);
+    }
 }
