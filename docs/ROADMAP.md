@@ -10,8 +10,18 @@ This document outlines the sLiq Protocol development roadmap. Items marked **TBD
 - [x] Chainlink oracle integration with Arbitrum sequencer uptime checks
 - [x] K-multiplier skew mechanism for self-balancing economics
 - [x] Auto-rolling position strategies
-- [x] Unit and fuzz test suite (109 tests)
+- [x] Unit and fuzz test suite (131 tests)
 - [x] Internal security review (static analysis, economic modeling, business logic)
+- [x] On-chain fee caps (`MAX_TOTAL_FEE_E2 = 2000`, `MAX_BOUNTY_E18 = 1e18`)
+- [x] Pausable pattern with guardian role for emergency response
+- [x] Dead shares defense against share inflation attacks
+- [x] Chainlink staleness check (`STALENESS_THRESHOLD = 3600s`)
+- [x] Oracle consistency (Chainlink-derived sqrtPX96 across all price-dependent functions)
+- [x] Position range bounds (`MIN_RANGE = 60`, `MAX_RANGE = 100,000` ticks)
+- [x] Anchor NFT ownership verification in `init()`
+- [x] Fee-on-transfer token guard
+- [x] CI pipeline with tests, linting, Slither, and coverage
+- [x] Governance deployment script (TimelockController)
 - [x] Live beta deployment on Arbitrum One
 - [x] Organic traction: 2,400+ positions, 175 ETH collateral in 30 days
 
@@ -29,8 +39,8 @@ This document outlines the sLiq Protocol development roadmap. Items marked **TBD
 - [ ] **Bug bounty program** -- launch on Immunefi with tiered rewards (Critical/High/Medium)
 - [ ] **Multisig deployment** -- transfer VaultManager ownership to a Safe 3-of-5 multisig
 - [ ] **Timelock integration** -- 48-hour timelock on implementation upgrades and math library changes
-- [ ] **Pausable pattern** -- add OpenZeppelin `PausableUpgradeable` for emergency response
-- [ ] **Guardian role** -- dedicated pause-only address for rapid incident response
+- [x] **Pausable pattern** -- OpenZeppelin `PausableUpgradeable` with `whenNotPaused` on deposit/open
+- [x] **Guardian role** -- dedicated pause-only address for rapid incident response
 - [ ] **Circuit breakers** -- automatic pause on anomalous activity (large withdrawals, oracle deviations)
 - [ ] **Runtime monitoring** -- on-chain tracking of k-multiplier values, collateralization ratios, and pool health
 
@@ -45,13 +55,13 @@ The protocol follows a progressive decentralization path:
 
 ### Protocol Enhancements
 
-- [ ] **On-chain fee caps** -- enforce maximum fee bounds in `setFees()` to prevent abuse (default split: LP 40% / Protocol 40% / Liquidators 20%, as per whitepaper)
+- [x] **On-chain fee caps** -- `MAX_TOTAL_FEE_E2 = 2000` (20%), `MAX_BOUNTY_E18 = 1e18`, with `FeesUpdated` event
 - [ ] **Anchor position governance** -- anchor NFT ownership via multisig or watchdog contract, with rebalancing mechanism as price drifts
 - [ ] **TWAP oracle fallback** -- integrate `pool.observe()` as secondary fallback between Chainlink and raw `slot0()`
 - [ ] **Oracle deviation checks** -- compare Chainlink price to pool price, revert if deviation exceeds threshold
 - [ ] **ERC-721 position tokens** -- tokenize positions for transferability and composability
 - [ ] **Slippage protection** -- optional `maxTick`/`minTick` parameters on position opens
-- [ ] **Event enrichment** -- emit events for failed rolling attempts, oracle fallbacks, and fee parameter changes
+- [ ] **Event enrichment** -- emit events for failed rolling attempts and oracle fallbacks (fee parameter change event `FeesUpdated` now implemented)
 - [ ] **VaR and stress testing** -- scenario analysis for extreme price moves, volatility clustering, and prolonged trends
 
 ### Ecosystem Growth

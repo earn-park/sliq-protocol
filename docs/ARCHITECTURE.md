@@ -126,7 +126,7 @@ stateDiagram-v2
 
 ## Oracle Design
 
-The oracle system uses a two-tier approach with safety checks.
+The oracle system uses a two-tier approach with safety checks. The v1 implementation uses Chainlink as the primary oracle with `pool.slot0()` as a fallback. TWAP-based oracle integration is planned for v2 to provide a third tier of price validation.
 
 ### Primary: Chainlink
 
@@ -148,7 +148,7 @@ If any Chainlink check fails (sequencer down, stale data, zero answer), the syst
 ### Safety Properties
 
 - **Sequencer grace period**: 1-hour cooldown after sequencer comes back up prevents stale-price exploitation during L2 outages.
-- **Staleness checks**: `answeredInRound >= roundId` and `updatedAt != 0` reject stale or incomplete rounds.
+- **Staleness checks**: `answeredInRound >= roundId`, `updatedAt != 0`, and `block.timestamp - updatedAt < STALENESS_THRESHOLD` (3600s) reject stale or incomplete rounds. Feed decimals are cached at initialization to avoid redundant external calls.
 - **Sign check**: `answer > 0` rejects invalid negative prices.
 - **Decimal normalization**: Handles any feed decimal precision (6, 8, 18, etc.) correctly.
 
@@ -159,10 +159,10 @@ If any Chainlink check fails (sequencer down, stale data, zero answer), the syst
 The vault uses ERC-4626-style share accounting via the `vsLP` token.
 
 **Deposit**:
-- First depositor: 1:1 ratio (shares = amount).
+- First depositor: dead shares defense -- 1,000 shares are minted to `address(1)` to prevent share inflation attacks. The depositor receives `amount - DEAD_SHARES` shares.
 - Subsequent depositors: `shares = amount * totalSupply / unfrozenAssets`.
-- Floor guarantee: `shares >= amount` (prevents dilution attacks on early deposits).
 - `unfrozenAssets = totalBalance - freezBalance` (position collateral is excluded from the share denominator).
+- Fee-on-transfer tokens are detected via balance checks before and after transfer; mismatches revert with `TransferAmountMismatch`.
 
 **Withdraw**:
 - `amount = shares * unfrozenAssets / totalSupply`.
