@@ -215,3 +215,7 @@ Please see [`CONTRIBUTING.md`](./CONTRIBUTING.md) for guidelines.
 ## License
 
 This project is licensed under the [Business Source License 1.1](./LICENSE) (BUSL-1.1).
+
+## Disclaimer
+
+This software is provided as-is, without warranty of any kind. sLiq is a technical protocol for trading impermanent loss exposure. It does not provide investment advice. Users are responsible for understanding the risks of decentralized finance, including but not limited to smart contract risk, oracle risk, and market risk. See the [whitepaper](https://sliq.finance) and [SECURITY.md](./docs/SECURITY.md) for detailed risk disclosures.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: NO
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.30;
 
 import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
