@@ -143,7 +143,7 @@ cd sliq-protocol
 
 forge install          # install dependencies
 forge build            # compile contracts
-forge test             # run all tests (109 unit + fuzz)
+forge test             # run all tests (131 unit + fuzz)
 forge test --gas-report # with gas reporting
 ```
 
@@ -162,7 +162,7 @@ Copy `.env.example` to `.env` and fill in your RPC URLs and API keys for fork te
 
 | Suite | Tests | Description |
 |-------|-------|-------------|
-| Unit: Vault | 39 | Deposit, withdraw, open, close, checkpoint, liquidate, rolling |
+| Unit: Vault | 61 | Deposit, withdraw, open, close, checkpoint, liquidate, rolling, pausable, guardian, invariants |
 | Unit: VaultManager | 14 | Deploy, upgrade, access control, multi-vault |
 | Unit: VaultMath | 40 | Price conversions, IL, fees, effective liquidity, triangular numbers |
 | Fuzz: VaultMath | 16 | Property-based testing (1,000 runs each) -- roundtrips, monotonicity, bounds |

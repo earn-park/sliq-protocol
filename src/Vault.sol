@@ -57,9 +57,12 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     error BountyTooHigh();
     error ZeroAnchorCollateral();
     error AnchorNotOwned();
+    error NotGuardian();
+    error TransferAmountMismatch();
 
     /* ~~~~ Events ~~~~ */
     event PayoutShortfall(uint256 indexed positionId, address indexed owner, uint256 entitled, uint256 paid);
+    event FeesUpdated(uint16 vaultE2, uint16 protocolE2, uint256 liquidatorE18);
 
     /* ~~~~ Immutable & basic config ~~~~ */
     IERC20 public collateralToken; // e.g. USDC
@@ -77,6 +80,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     VaultMath public vaultMath;
 
     address public guardian;
+    uint8 private _feedDecimals;
 
     /* ~~~~ Checkpoints & global state ~~~~ */
     struct Checkpoint {
@@ -208,6 +212,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
 
         seq = AggregatorV3Interface(_seq);
         feed = AggregatorV3Interface(_feed);
+        _feedDecimals = feed.decimals();
 
         feeVaultPercentE2 = 300;
         feeProtocolPercentE2 = 200;
@@ -239,7 +244,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
                 answer > 0 && updatedAt != 0 && answeredInRound >= roundId
                     && block.timestamp - updatedAt < STALENESS_THRESHOLD
             ) {
-                uint8 dec = feed.decimals();
+                uint8 dec = _feedDecimals;
                 // Convert answer from feed decimals to 1e18
                 if (dec < 18) {
                     priceE18Chainlink = uint256(answer) * (10 ** uint256(18 - dec));
@@ -340,8 +345,6 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         if (side == Side.Long) afterSkew = _calcSkewE18(2 * totalEffShort, totalEffLong + totalEffShort + eff);
         else afterSkew = _calcSkewE18(2 * totalEffLong, totalEffLong + totalEffShort + eff);
     }
-
-    error TransferAmountMismatch();
 
     function _open(address positionOwner, Side side, int24 range, uint256 amount, Rolling rolling)
         internal
@@ -718,11 +721,10 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         feeVaultPercentE2 = vaultE2;
         feeProtocolPercentE2 = protocolE2;
         bountyLiquidatorE18 = liquidatorE18;
+        emit FeesUpdated(vaultE2, protocolE2, liquidatorE18);
     }
 
     /* ~~~~ Pausable ~~~~ */
-
-    error NotGuardian();
 
     function pause() external {
         if (msg.sender != guardian && msg.sender != owner()) revert NotGuardian();

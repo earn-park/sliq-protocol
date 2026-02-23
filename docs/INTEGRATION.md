@@ -23,9 +23,14 @@ address vault = IVaultManager(manager).vaultOf(poolAddress);
 ### Check position status
 
 ```solidity
-(uint256 result, bool liquidatable) = IVault(vault).status(positionId);
-// result: expected payout in collateral token units
-// liquidatable: true if the position can be liquidated
+(uint256 collateral, uint256 fee, uint256 il, uint256 kE18, int256 result, bool active) =
+    IVault(vault).status(positionId);
+// collateral: initial deposit amount
+// fee: accumulated fee entitlement in collateral units
+// il: accumulated impermanent loss in collateral units
+// kE18: current K-multiplier for this position's side (1e18 = 1.0)
+// result: net payout (positive = profit, negative = loss)
+// active: true if the position is still open
 ```
 
 ### Get LP share price
@@ -116,11 +121,13 @@ Key events emitted by the Vault:
 
 | Event | Description |
 |-------|-------------|
-| `PositionOpened(uint256 id, address owner, bool isLong, int24 tickLower, int24 tickUpper, uint256 collateral)` | New position created |
-| `PositionClosed(uint256 id, uint256 result)` | Position settled |
-| `Liquidated(uint256 id, address liquidator, uint256 bounty)` | Position liquidated |
-| `Deposit(address depositor, uint256 amount, uint256 shares)` | LP deposit |
-| `Withdraw(address withdrawer, uint256 shares, uint256 amount)` | LP withdrawal |
+| `Open(uint256 id, address owner, Side side, uint256 collateral, int24 tickLower, int24 tickUpper, uint256 kE18, Rolling rolling)` | New position created |
+| `Close(uint256 id, address owner, Side side, uint256 collateral, int24 tickLower, int24 tickUpper, int256 result, uint256 fee, uint256 il, uint256 kE18)` | Position settled |
+| `Liquidate(uint256 id, address owner, Side side, uint256 collateral, int24 tickLower, int24 tickUpper, int256 result, uint256 fee, uint256 il, uint256 kE18, uint256 bountys)` | Position liquidated |
+| `Deposit(address from, uint256 assets, uint256 shares)` | LP deposit |
+| `Withdraw(address from, uint256 assets, uint256 shares)` | LP withdrawal |
+| `PayoutShortfall(uint256 positionId, address owner, uint256 entitled, uint256 paid)` | Partial payout due to insufficient vault balance |
+| `FeesUpdated(uint16 vaultE2, uint16 protocolE2, uint256 liquidatorE18)` | Fee parameters changed |
 
 ## Deployed Addresses
 

@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@8f1998e9878d8571084571e285b04bba23e30948 # v1.2.0
@@ -29,6 +30,9 @@ jobs:
       - name: Gas snapshot
         run: forge snapshot
 
+      - name: Coverage
+        run: forge coverage --ir-minimum
+
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
@@ -36,6 +40,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@8f1998e9878d8571084571e285b04bba23e30948 # v1.2.0
@@ -50,6 +55,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@8f1998e9878d8571084571e285b04bba23e30948 # v1.2.0
@@ -59,4 +65,3 @@ jobs:
 
       - name: Run Slither
         run: slither src/ --config-file slither.config.json
-        continue-on-error: true
