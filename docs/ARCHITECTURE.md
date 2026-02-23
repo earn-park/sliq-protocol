@@ -216,6 +216,50 @@ UpgradeableBeacon (stores implementation address)
 - **Storage compatibility**: New implementations must preserve the existing storage layout. New state variables can only be appended.
 - **VaultMath upgrade**: `VaultManager.setVaultMath(newMath)` updates the math library address. Note: this only affects newly deployed vaults; existing vaults retain their original VaultMath reference unless individually updated.
 
+## Bytecode Size Management
+
+The Vault contract is the largest in the system, subject to the EIP-170 limit of 24,576 bytes deployed bytecode. The protocol manages this constraint through a **computation extraction pattern**: heavy math is delegated to VaultMath via external calls, keeping Vault bytecode lean while preserving correctness.
+
+### Current Sizes
+
+| Contract | Runtime Size | Margin | Role |
+|----------|-------------|--------|------|
+| Vault | 23,437 B | 1,139 B | Core logic (positions, LP, oracle, lifecycle) |
+| VaultMath | 8,184 B | 16,392 B | Stateless math (IL, fees, price conversions) |
+| VaultManager | 3,318 B | 21,258 B | Factory and beacon admin |
+
+### Extraction Pattern
+
+The Vault's `_statusCalc()` function computes position PnL on every status query, close, and liquidation. Its impermanent loss calculation involves:
+- 3x `FPM.rpow()` calls (exponentiation with 1e18 precision)
+- ~10x `FullMath.mulDiv()` chains (512-bit intermediate multiplication)
+- Calls to `_ilPercentE18()`, `tickDiffPercentE18()`, and `triangularNumber()`
+
+When inlined in Vault, these operations consume ~1.3 KB of bytecode. By extracting them into `VaultMath.calcPositionIL()`, the Vault replaces this with a single external call (~50 bytes), freeing significant space.
+
+**How it works:**
+
+```
+Vault._statusCalc(id)
+  ├─ reads position data from storage
+  ├─ computes virtual checkpoint (fee deltas, skew)
+  ├─ calculates tick move from midpoint
+  ├─ calls vaultMath.calcPositionIL(range, move, collateral)  ← external
+  │     └─ rpow, mulDiv, ilPercent, tickDiffPercent, triangular
+  ├─ applies skew (K-multiplier) to IL/fee
+  └─ returns (collateral, fee, il, kE18, result)
+```
+
+### Adding New Features
+
+When adding features to Vault, monitor bytecode size with `forge build --sizes`. If approaching the limit:
+
+1. **Extract pure computation** to VaultMath — any function that takes value parameters and returns a result without reading Vault storage is a candidate.
+2. **Reduce optimizer runs** — lowering `optimizer_runs` from 200 trades runtime gas for smaller bytecode. Only use as a last resort.
+3. **Remove unused imports** — each import pulls in interface definitions and type information.
+
+Do NOT use the Diamond pattern (EIP-2535) or split the contract into facets. The beacon proxy pattern provides a simpler security model and the extraction approach has sufficient headroom for planned features.
+
 ## Trust Assumptions
 
 | Actor | Trust Level | Capabilities |

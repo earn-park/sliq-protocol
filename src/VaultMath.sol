@@ -221,4 +221,50 @@ contract VaultMath is IVaultMath {
         // n*(n+1)/2 without overflow on intermediate multiplication
         return FullMath.mulDiv(n, n + 1, 2);
     }
+
+    /// @notice Calculate the impermanent loss for a position given its range, price move, and collateral
+    /// @dev Extracted from Vault._statusCalc to reduce Vault bytecode (EIP-170 limit).
+    ///   Contains heavy computation: 3x FPM.rpow, multiple FullMath.mulDiv chains.
+    /// @param range Half the tick range width of the position
+    /// @param move Absolute tick distance from position midpoint to current tick (capped at range for shorts)
+    /// @param collateral The position's collateral amount
+    /// @return ilCalc The computed impermanent loss in collateral token units
+    function calcPositionIL(int24 range, int24 move, uint256 collateral) public pure returns (uint256 ilCalc) {
+        int24 rangesInMove = move / range;
+        int24 lastMoveI24 = move - rangesInMove * range; // 0..range
+
+        if (lastMoveI24 > 0) {
+            uint256 sqrtPuE18 = FPM.rpow(1000100000000000000, uint256(int256(range / 2)), 1e18);
+            uint256 sqrtPtE18 = FPM.rpow(1000100000000000000, uint256(int256(lastMoveI24 / 2)), 1e18);
+            uint256 PtE18 = FPM.rpow(1000100000000000000, uint256(int256(lastMoveI24)), 1e18);
+            uint256 avgPriceE18 = sqrtPtE18;
+            uint256 num = sqrtPuE18 - sqrtPtE18;
+            uint256 den = FullMath.mulDiv(sqrtPtE18, sqrtPuE18 - 1e18, 1e18);
+            uint256 tokenTradeE18 = 1e18 - FullMath.mulDiv(num, 1e18, den);
+            uint256 ilMovePercentE18 = FullMath.mulDiv(tokenTradeE18, PtE18 - avgPriceE18, 2e18);
+
+            uint256 ilE18 = _ilPercentE18(range);
+            uint256 position = FullMath.mulDiv(2 * collateral, 1e18, ilE18);
+
+            ilCalc = FullMath.mulDiv(position, ilMovePercentE18, 1e18);
+        }
+        if (move >= range) {
+            uint256 c = collateral;
+            uint256 ilAtRangeE18 = _ilPercentE18(range);
+
+            uint256 perRangeTerm = FullMath.mulDiv(tickDiffPercentE18(range), c, ilAtRangeE18);
+            uint256 lastMoveTerm = FullMath.mulDiv(tickDiffPercentE18(lastMoveI24), c, ilAtRangeE18);
+
+            uint256 k = uint256(uint24(rangesInMove)); // k >= 1
+
+            // IL at each full range boundary: k * collateral
+            ilCalc += k * c;
+
+            // Triangular sum for multi-range moves: sum_{i=1..k} ((k-i)*range + rem)
+            if (k > 1) {
+                ilCalc += FullMath.mulDiv(triangularNumber(k - 1), perRangeTerm, 1);
+            }
+            ilCalc += FullMath.mulDiv(k, lastMoveTerm, 1);
+        }
+    }
 }

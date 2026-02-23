@@ -19,8 +19,6 @@ import "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
 
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
-import { FixedPointMathLib as FPM } from "solmate/utils/FixedPointMathLib.sol";
-
 import { Initializable } from "@openzeppelin-upgradeable/contracts/proxy/utils/Initializable.sol";
 import { ERC20Upgradeable } from "@openzeppelin-upgradeable/contracts/token/ERC20/ERC20Upgradeable.sol";
 import { OwnableUpgradeable } from "@openzeppelin-upgradeable/contracts/access/OwnableUpgradeable.sol";
@@ -59,10 +57,12 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     error AnchorNotOwned();
     error NotGuardian();
     error TransferAmountMismatch();
+    error ZeroAddress();
 
     /* ~~~~ Events ~~~~ */
     event PayoutShortfall(uint256 indexed positionId, address indexed owner, uint256 entitled, uint256 paid);
     event FeesUpdated(uint16 vaultE2, uint16 protocolE2, uint256 liquidatorE18);
+    event RollSkipped(uint256 indexed positionId, address indexed owner);
 
     /* ~~~~ Immutable & basic config ~~~~ */
     IERC20 public collateralToken; // e.g. USDC
@@ -192,6 +192,12 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         address _seq,
         address _feed
     ) external initializer {
+        if (_owner == address(0)) revert ZeroAddress();
+        if (_vaultMath == address(0)) revert ZeroAddress();
+        if (_pool == address(0)) revert ZeroAddress();
+        if (_collateral == address(0)) revert ZeroAddress();
+        if (_nfpm == address(0)) revert ZeroAddress();
+
         __ERC20_init("Vault Share LP", "vsLP");
         __Ownable_init();
         transferOwnership(_owner);
@@ -480,47 +486,10 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         int24 ct = currentTick();
         int24 tickMid = p.tickLower + range;
         int24 move = ct < tickMid ? tickMid - ct : ct - tickMid;
-        uint256 ilCalc = 0;
         if (move > range && p.side == Side.Short) move = range; // safe short
 
-        int24 rangesInMove = move / range;
-        int24 lastMoveI24 = move - rangesInMove * range; // 0..range
-
-        if (lastMoveI24 > 0) {
-            uint256 sqrtPuE18 = FPM.rpow(1000100000000000000, uint256(int256(range / 2)), 1e18);
-            uint256 sqrtPtE18 = FPM.rpow(1000100000000000000, uint256(int256(lastMoveI24 / 2)), 1e18);
-            uint256 PtE18 = FPM.rpow(1000100000000000000, uint256(int256(lastMoveI24)), 1e18);
-            uint256 avgPriceE18 = sqrtPtE18;
-            uint256 num = sqrtPuE18 - sqrtPtE18;
-            uint256 den = FullMath.mulDiv(sqrtPtE18, sqrtPuE18 - 1e18, 1e18);
-            uint256 tokenTradeE18 = 1e18 - FullMath.mulDiv(num, 1e18, den);
-            uint256 ilMovePercentE18 = FullMath.mulDiv(tokenTradeE18, PtE18 - avgPriceE18, 2e18);
-
-            uint256 ilE18 = vaultMath._ilPercentE18(range);
-            uint256 position = FullMath.mulDiv(2 * p.collateral, 1e18, ilE18);
-
-            ilCalc = FullMath.mulDiv(position, ilMovePercentE18, 1e18);
-        }
-        if (move >= range) {
-            uint256 c = p.collateral;
-            uint256 ilAtRangeE18 = vaultMath._ilPercentE18(range);
-
-            uint256 perRangeTerm = FullMath.mulDiv(vaultMath.tickDiffPercentE18(range), c, ilAtRangeE18);
-
-            uint256 lastMoveTerm = FullMath.mulDiv(vaultMath.tickDiffPercentE18(lastMoveI24), c, ilAtRangeE18);
-
-            uint256 k = uint256(uint24(rangesInMove)); // k >= 1
-
-            // 1) IL at each full range boundary: k * collateral
-            ilCalc += k * c;
-
-            // 2) Short: sum_{i=1..k} ((k-i)*range + rem)
-            //    = triangular(k-1)*range + k*rem
-            if (k > 1) {
-                ilCalc += FullMath.mulDiv(vaultMath.triangularNumber(k - 1), perRangeTerm, 1);
-            }
-            ilCalc += FullMath.mulDiv(k, lastMoveTerm, 1);
-        }
+        // IL calculation delegated to VaultMath to reduce Vault bytecode (EIP-170)
+        uint256 ilCalc = vaultMath.calcPositionIL(range, move, p.collateral);
 
         if (p.side == Side.Short) {
             uint256 skewShortE18 = totalTime == 0
@@ -603,18 +572,21 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         else totalEffShort -= eff;
 
         // Interactions: external transfers after state is consistent
+        bool shortfall = false;
         if (payout > 0) {
             uint256 balanceVault = collateralToken.balanceOf(address(this));
             uint256 transferAmt = balanceVault > uint256(payout) ? uint256(payout) : balanceVault;
             if (transferAmt < uint256(payout)) {
                 emit PayoutShortfall(id, positionOwner, uint256(payout), transferAmt);
+                shortfall = true;
             }
             payout = int256(transferAmt);
             p.result = payout;
             collateralToken.safeTransfer(positionOwner, transferAmt);
         }
 
-        if (feeProtocol > 0) {
+        // Skip protocol fee during insolvency to preserve liquidity for remaining positions
+        if (feeProtocol > 0 && !shortfall) {
             uint256 balanceVault = collateralToken.balanceOf(address(this));
             uint256 transferAmt = balanceVault > feeProtocol ? feeProtocol : balanceVault;
             collateralToken.safeTransfer(owner(), transferAmt);
@@ -636,6 +608,9 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
             }
             _open(positionOwner, rollingSide, range, positionAmount, positionRolling);
         } else {
+            if (liquidation && positionRolling != Rolling.No) {
+                emit RollSkipped(id, positionOwner);
+            }
             _checkpoint();
         }
     }

@@ -128,6 +128,7 @@ Key events emitted by the Vault:
 | `Withdraw(address from, uint256 assets, uint256 shares)` | LP withdrawal |
 | `PayoutShortfall(uint256 positionId, address owner, uint256 entitled, uint256 paid)` | Partial payout due to insufficient vault balance |
 | `FeesUpdated(uint16 vaultE2, uint16 protocolE2, uint256 liquidatorE18)` | Fee parameters changed |
+| `RollSkipped(uint256 positionId, address owner)` | Auto-roll failed (insufficient balance or allowance) |
 
 ## Deployed Addresses
 

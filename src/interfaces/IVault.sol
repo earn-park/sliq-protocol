@@ -39,6 +39,7 @@ interface IVault {
     error AnchorNotOwned();
     error NotGuardian();
     error TransferAmountMismatch();
+    error ZeroAddress();
 
     /* ~~~~ Events ~~~~ */
     event Open(
@@ -80,6 +81,7 @@ interface IVault {
     event Withdraw(address indexed from, uint256 assets, uint256 shares);
     event PayoutShortfall(uint256 indexed positionId, address indexed owner, uint256 entitled, uint256 paid);
     event FeesUpdated(uint16 vaultE2, uint16 protocolE2, uint256 liquidatorE18);
+    event RollSkipped(uint256 indexed positionId, address indexed owner);
 
     /* ~~~~ Initialization ~~~~ */
     function init(

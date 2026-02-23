@@ -22,6 +22,10 @@ This document outlines the sLiq Protocol development roadmap. Items marked **TBD
 - [x] Fee-on-transfer token guard
 - [x] CI pipeline with tests, linting, Slither, and coverage
 - [x] Governance deployment script (TimelockController)
+- [x] Bytecode size optimization (IL calc extracted to VaultMath; Vault 23,437/24,576 B)
+- [x] Zero-address validation in `init()`
+- [x] `RollSkipped` event for failed auto-roll attempts
+- [x] Protocol fee subordination during vault shortfall
 - [x] Live beta deployment on Arbitrum One
 - [x] Organic traction: 2,400+ positions, 175 ETH collateral in 30 days
 

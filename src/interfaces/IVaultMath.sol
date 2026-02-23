@@ -37,4 +37,5 @@ interface IVaultMath {
 
     function decimals(address t) external view returns (uint8);
     function triangularNumber(uint256 n) external pure returns (uint256);
+    function calcPositionIL(int24 range, int24 move, uint256 collateral) external pure returns (uint256 ilCalc);
 }
