@@ -89,11 +89,9 @@ contract VaultTest is Test {
         assertEq(vault.symbol(), "vsLP");
     }
 
-    function test_Init_NextPosIdStartsAtDefault() public view {
-        // In a BeaconProxy, the storage variable nextPosId
-        // starts at the default (0) since the initializer does not set it.
-        // The `= 1` in the declaration is only for the implementation, not the proxy.
-        assertEq(vault.nextPosId(), 0);
+    function test_Init_NextPosIdStartsAtOne() public view {
+        // init() explicitly sets nextPosId = 1 for proxy storage consistency
+        assertEq(vault.nextPosId(), 1);
     }
 
     function test_RevertWhen_Init_CalledTwice() public {
@@ -112,12 +110,13 @@ contract VaultTest is Test {
 
     // ---- Deposit ----
 
-    function test_Deposit_FirstDepositor1to1() public {
+    function test_Deposit_FirstDepositor() public {
         vm.prank(alice);
         uint256 shares = vault.deposit(1000e6);
-        assertEq(shares, 1000e6);
-        assertEq(vault.balanceOf(alice), 1000e6);
-        assertEq(vault.totalSupply(), 1000e6);
+        uint256 expectedShares = 1000e6 - 1000; // DEAD_SHARES locked
+        assertEq(shares, expectedShares);
+        assertEq(vault.balanceOf(alice), expectedShares);
+        assertEq(vault.totalSupply(), 1000e6); // includes dead shares at address(1)
     }
 
     function test_Deposit_TransfersTokens() public {
@@ -129,9 +128,10 @@ contract VaultTest is Test {
     }
 
     function test_Deposit_EmitsEvent() public {
+        uint256 expectedShares = 1000e6 - 1000;
         vm.prank(alice);
         vm.expectEmit(true, false, false, true);
-        emit Vault.Deposit(alice, 1000e6, 1000e6);
+        emit Vault.Deposit(alice, 1000e6, expectedShares);
         vault.deposit(1000e6);
     }
 
@@ -158,13 +158,14 @@ contract VaultTest is Test {
         vm.prank(alice);
         vault.deposit(1000e6);
 
+        uint256 aliceShares = vault.balanceOf(alice);
         uint256 balBefore = collateral.balanceOf(alice);
         vm.prank(alice);
-        uint256 amount = vault.withdraw(1000e6);
+        uint256 amount = vault.withdraw(aliceShares);
         uint256 balAfter = collateral.balanceOf(alice);
 
-        assertEq(amount, 1000e6);
-        assertEq(balAfter - balBefore, 1000e6);
+        assertEq(amount, aliceShares);
+        assertEq(balAfter - balBefore, aliceShares);
         assertEq(vault.balanceOf(alice), 0);
     }
 
@@ -172,20 +173,24 @@ contract VaultTest is Test {
         vm.prank(alice);
         vault.deposit(1000e6);
 
+        uint256 aliceShares = vault.balanceOf(alice);
+        uint256 halfShares = aliceShares / 2;
+
         vm.prank(alice);
-        uint256 amount = vault.withdraw(500e6);
-        assertEq(amount, 500e6);
-        assertEq(vault.balanceOf(alice), 500e6);
+        uint256 amount = vault.withdraw(halfShares);
+        assertEq(amount, halfShares);
+        assertEq(vault.balanceOf(alice), aliceShares - halfShares);
     }
 
     function test_Withdraw_EmitsEvent() public {
         vm.prank(alice);
         vault.deposit(1000e6);
 
+        uint256 aliceShares = vault.balanceOf(alice);
         vm.prank(alice);
         vm.expectEmit(true, false, false, true);
-        emit Vault.Withdraw(alice, 1000e6, 1000e6);
-        vault.withdraw(1000e6);
+        emit Vault.Withdraw(alice, aliceShares, aliceShares);
+        vault.withdraw(aliceShares);
     }
 
     function test_RevertWhen_Withdraw_ZeroShares() public {
@@ -214,8 +219,8 @@ contract VaultTest is Test {
 
         vm.prank(alice);
         uint256 id = vault.openLong(500, 100e6, Vault.Rolling.No);
-        assertEq(id, 0);
-        assertEq(vault.nextPosId(), 1);
+        assertEq(id, 1);
+        assertEq(vault.nextPosId(), 2);
 
         (
             address posOwner,
@@ -242,7 +247,7 @@ contract VaultTest is Test {
 
         vm.prank(alice);
         uint256 id = vault.openShort(500, 100e6, Vault.Rolling.No);
-        assertEq(id, 0);
+        assertEq(id, 1);
 
         (, Vault.Side side, uint256 col,,,,,,) = vault.positions(id);
 
@@ -295,8 +300,8 @@ contract VaultTest is Test {
         vm.prank(bob);
         uint256 id2 = vault.openShort(300, 200e6, Vault.Rolling.No);
 
-        assertEq(id1, 0);
-        assertEq(id2, 1);
+        assertEq(id1, 1);
+        assertEq(id2, 2);
     }
 
     function test_Open_WithRollingDirect() public {
@@ -476,6 +481,41 @@ contract VaultTest is Test {
         vm.prank(alice);
         vm.expectRevert("Ownable: caller is not the owner");
         vault.setFees(500, 100, 20e12);
+    }
+
+    function test_RevertWhen_SetFees_TooHigh() public {
+        vm.expectRevert(Vault.FeeTooHigh.selector);
+        vault.setFees(1500, 600, 20e12); // 2100 > 2000
+    }
+
+    function test_RevertWhen_SetFees_BountyTooHigh() public {
+        vm.expectRevert(Vault.BountyTooHigh.selector);
+        vault.setFees(500, 100, 2e18); // > 1e18
+    }
+
+    function test_SetFees_AtMaximum() public {
+        vault.setFees(1000, 1000, 1e18); // exactly at cap
+        assertEq(vault.feeVaultPercentE2(), 1000);
+        assertEq(vault.feeProtocolPercentE2(), 1000);
+        assertEq(vault.bountyLiquidatorE18(), 1e18);
+    }
+
+    // ---- Range bounds ----
+
+    function test_RevertWhen_Open_RangeTooSmall() public {
+        vault.deposit(10_000e6);
+
+        vm.prank(alice);
+        vm.expectRevert(Vault.RangeTooSmall.selector);
+        vault.openLong(59, 100e6, Vault.Rolling.No);
+    }
+
+    function test_RevertWhen_Open_RangeTooLarge() public {
+        vault.deposit(10_000e6);
+
+        vm.prank(alice);
+        vm.expectRevert(Vault.RangeTooLarge.selector);
+        vault.openLong(100_001, 100e6, Vault.Rolling.No);
     }
 
     // ---- estimateLong / estimateShort ----
