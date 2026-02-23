@@ -42,6 +42,7 @@ contract VaultTest is Test {
         nfpm.setPosition(
             anchorId, address(collateral), address(collateral), ANCHOR_LOWER, ANCHOR_UPPER, ANCHOR_LIQ, 0, 0, 0, 0
         );
+        nfpm.setOwner(anchorId, owner);
 
         // Sequencer: force fallback to pool.slot0()
         // status=1 => sequencer DOWN, so Chainlink not used

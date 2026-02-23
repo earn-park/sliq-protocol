@@ -27,10 +27,11 @@ import { OwnableUpgradeable } from "@openzeppelin-upgradeable/contracts/access/O
 import {
     ReentrancyGuardUpgradeable
 } from "@openzeppelin-upgradeable/contracts/security/ReentrancyGuardUpgradeable.sol";
+import { PausableUpgradeable } from "@openzeppelin-upgradeable/contracts/security/PausableUpgradeable.sol";
 
 import "./VaultMath.sol";
 
-contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable {
     using SafeERC20 for IERC20;
 
     /* ~~~~ Constants ~~~~ */
@@ -54,6 +55,11 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     error NotLiquidatable();
     error FeeTooHigh();
     error BountyTooHigh();
+    error ZeroAnchorCollateral();
+    error AnchorNotOwned();
+
+    /* ~~~~ Events ~~~~ */
+    event PayoutShortfall(uint256 indexed positionId, address indexed owner, uint256 entitled, uint256 paid);
 
     /* ~~~~ Immutable & basic config ~~~~ */
     IERC20 public collateralToken; // e.g. USDC
@@ -69,6 +75,8 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     AggregatorV3Interface public feed;
 
     VaultMath public vaultMath;
+
+    address public guardian;
 
     /* ~~~~ Checkpoints & global state ~~~~ */
     struct Checkpoint {
@@ -184,7 +192,9 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         __Ownable_init();
         transferOwnership(_owner);
         __ReentrancyGuard_init();
+        __Pausable_init();
 
+        guardian = _owner;
         vaultMath = VaultMath(_vaultMath);
 
         // Cache collateral token decimals for share accounting
@@ -194,6 +204,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         collateralToken = IERC20(_collateral);
         nfpm = INonfungiblePositionManager(_nfpm);
         anchorId = _anchorId;
+        if (nfpm.ownerOf(_anchorId) != address(this) && nfpm.ownerOf(_anchorId) != _owner) revert AnchorNotOwned();
 
         seq = AggregatorV3Interface(_seq);
         feed = AggregatorV3Interface(_feed);
@@ -271,7 +282,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     }
 
     function _anchorCollateral() internal view returns (uint256 amount) {
-        (uint160 sqrtPX96,,,,,,) = pool.slot0();
+        uint160 sqrtPX96 = TickMath.getSqrtRatioAtTick(currentTick());
         (,,,,, int24 anchorLower, int24 anchorUpper, uint128 liquidity,,,,) = nfpm.positions(anchorId);
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
             sqrtPX96, TickMath.getSqrtRatioAtTick(anchorLower), TickMath.getSqrtRatioAtTick(anchorUpper), liquidity
@@ -330,11 +341,15 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         else afterSkew = _calcSkewE18(2 * totalEffLong, totalEffLong + totalEffShort + eff);
     }
 
+    error TransferAmountMismatch();
+
     function _open(address positionOwner, Side side, int24 range, uint256 amount, Rolling rolling)
         internal
         returns (uint256 id)
     {
+        uint256 balBefore = collateralToken.balanceOf(address(this));
         collateralToken.safeTransferFrom(positionOwner, address(this), amount);
+        if (collateralToken.balanceOf(address(this)) - balBefore != amount) revert TransferAmountMismatch();
         freezBalance = freezBalance + amount;
 
         (int24 lower, int24 upper, uint256 eff,) = _calc_new_position(range, amount);
@@ -354,11 +369,21 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         emit Open(id, positionOwner, side, amount, lower, upper, kE18, rolling);
     }
 
-    function openShort(int24 range, uint256 amount, Rolling rolling) external nonReentrant returns (uint256 id) {
+    function openShort(int24 range, uint256 amount, Rolling rolling)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 id)
+    {
         return _open(msg.sender, Side.Short, range, amount, rolling);
     }
 
-    function openLong(int24 range, uint256 amount, Rolling rolling) external nonReentrant returns (uint256 id) {
+    function openLong(int24 range, uint256 amount, Rolling rolling)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 id)
+    {
         return _open(msg.sender, Side.Long, range, amount, rolling);
     }
 
@@ -406,8 +431,9 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     function _view_new_checkpoint() internal view returns (Checkpoint memory cp, uint256 fee0, uint256 fee1) {
         uint64 ts = uint64(block.timestamp);
 
-        (fee0, fee1) = vaultMath.calcFees(nfpm, pool, anchorId, currentTick(), _anchorLower(), _anchorUpper());
-        (uint160 sqrtPX96,,,,,,) = pool.slot0();
+        int24 tick = currentTick();
+        (fee0, fee1) = vaultMath.calcFees(nfpm, pool, anchorId, tick, _anchorLower(), _anchorUpper());
+        uint160 sqrtPX96 = TickMath.getSqrtRatioAtTick(tick);
 
         Checkpoint memory from = cps[cps.length - 1];
         uint256 dFee0 = fee0 - lastFee0Cum;
@@ -442,6 +468,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
 
         Checkpoint memory from = cps[p.cpIndexOpen];
         (Checkpoint memory to,,) = _view_new_checkpoint();
+        if (from.anchorCollateral == 0) revert ZeroAnchorCollateral();
         uint256 liqShareE18 = FullMath.mulDiv(liqEff, 1e18, from.anchorCollateral);
         uint256 totalFee = to.totalFeeCum - from.totalFeeCum;
         uint256 totalTime = to.timestamp - from.timestamp;
@@ -576,6 +603,11 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         if (payout > 0) {
             uint256 balanceVault = collateralToken.balanceOf(address(this));
             uint256 transferAmt = balanceVault > uint256(payout) ? uint256(payout) : balanceVault;
+            if (transferAmt < uint256(payout)) {
+                emit PayoutShortfall(id, positionOwner, uint256(payout), transferAmt);
+            }
+            payout = int256(transferAmt);
+            p.result = payout;
             collateralToken.safeTransfer(positionOwner, transferAmt);
         }
 
@@ -645,11 +677,13 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     }
 
     /// @notice Deposit collateral tokens and receive vault shares
-    function deposit(uint256 amount) external nonReentrant returns (uint256 shares) {
+    function deposit(uint256 amount) external nonReentrant whenNotPaused returns (uint256 shares) {
         if (amount == 0) revert ZeroAmount();
 
         uint256 assetsBefore = _totalAssets() - freezBalance;
+        uint256 balBefore = collateralToken.balanceOf(address(this));
         collateralToken.safeTransferFrom(msg.sender, address(this), amount);
+        if (collateralToken.balanceOf(address(this)) - balBefore != amount) revert TransferAmountMismatch();
 
         if (totalSupply() == 0 && assetsBefore == 0) {
             // First depositor: lock DEAD_SHARES to prevent share inflation attack
@@ -684,5 +718,22 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         feeVaultPercentE2 = vaultE2;
         feeProtocolPercentE2 = protocolE2;
         bountyLiquidatorE18 = liquidatorE18;
+    }
+
+    /* ~~~~ Pausable ~~~~ */
+
+    error NotGuardian();
+
+    function pause() external {
+        if (msg.sender != guardian && msg.sender != owner()) revert NotGuardian();
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    function setGuardian(address _guardian) external onlyOwner {
+        guardian = _guardian;
     }
 }

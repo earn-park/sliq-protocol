@@ -37,6 +37,7 @@ contract VaultManagerTest is Test {
 
         // Set up NFPM position for anchor
         nfpm.setPosition(anchorId, address(collateral), address(collateral), -1000, 1000, 1e18, 0, 0, 0, 0);
+        nfpm.setOwner(anchorId, owner);
 
         // Sequencer: status=0 (UP), startedAt=0 => Chainlink won't be used
         // This forces fallback to pool.slot0()
@@ -159,6 +160,7 @@ contract VaultManagerTest is Test {
         );
 
         nfpm.setPosition(2, address(collateral), address(collateral), -1000, 1000, 1e18, 0, 0, 0, 0);
+        nfpm.setOwner(2, owner);
 
         address v2 =
             manager.newVault(address(pool2), address(collateral), address(nfpm), 2, address(seq), address(feed));
