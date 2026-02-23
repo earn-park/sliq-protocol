@@ -31,22 +31,39 @@ This document outlines the sLiq Protocol development roadmap. Items marked **TBD
 - [ ] **Timelock integration** -- 48-hour timelock on implementation upgrades and math library changes
 - [ ] **Pausable pattern** -- add OpenZeppelin `PausableUpgradeable` for emergency response
 - [ ] **Guardian role** -- dedicated pause-only address for rapid incident response
+- [ ] **Circuit breakers** -- automatic pause on anomalous activity (large withdrawals, oracle deviations)
+- [ ] **Runtime monitoring** -- on-chain tracking of k-multiplier values, collateralization ratios, and pool health
+
+### Governance Progression
+
+The protocol follows a progressive decentralization path:
+
+1. **Current (beta):** Single EOA owner for rapid iteration
+2. **v1 (mainnet):** 3-of-5 Safe multisig + 48-hour timelock on critical operations
+3. **v2:** Expanded governance parameters (leverage bounds, risk caps, k-multiplier methods)
+4. **v3+:** Protocol token and DAO governance with on-chain voting
 
 ### Protocol Enhancements
 
-- [ ] **On-chain fee caps** -- enforce maximum fee bounds in `setFees()` to prevent abuse
-- [ ] **Anchor position rebalancing** -- mechanism to adjust the anchor NFT range as price drifts
+- [ ] **On-chain fee caps** -- enforce maximum fee bounds in `setFees()` to prevent abuse (default split: LP 40% / Protocol 40% / Liquidators 20%, as per whitepaper)
+- [ ] **Anchor position governance** -- anchor NFT ownership via multisig or watchdog contract, with rebalancing mechanism as price drifts
+- [ ] **TWAP oracle fallback** -- integrate `pool.observe()` as secondary fallback between Chainlink and raw `slot0()`
+- [ ] **Oracle deviation checks** -- compare Chainlink price to pool price, revert if deviation exceeds threshold
 - [ ] **ERC-721 position tokens** -- tokenize positions for transferability and composability
 - [ ] **Slippage protection** -- optional `maxTick`/`minTick` parameters on position opens
-- [ ] **Event enrichment** -- emit events for failed rolling attempts and fee parameter changes
+- [ ] **Event enrichment** -- emit events for failed rolling attempts, oracle fallbacks, and fee parameter changes
+- [ ] **VaR and stress testing** -- scenario analysis for extreme price moves, volatility clustering, and prolonged trends
 
 ### Ecosystem Growth
 
 - [ ] **Multi-pool expansion** -- deploy vaults for top Arbitrum Uniswap V3 pools (ARB/ETH, WBTC/ETH, GMX/ETH)
 - [ ] **Chain expansion** -- deploy on additional L2s (Base, Optimism) leveraging chain-agnostic design
+- [ ] **Cross-pair support** -- Chainlink feeds for cross-pair risk controls and hedging
 - [ ] **Subgraph and indexer** -- The Graph subgraph for position tracking and analytics
 - [ ] **SDK and developer tools** -- TypeScript SDK for frontend and bot integration
+- [ ] **Open-source simulation scripts** -- backtesting and scenario modeling tools
 - [ ] **Vault Depot integrations** -- composability with yield aggregators and portfolio managers
+- [ ] **Protocol token** -- governance token with staking, emission schedules, and anti-sybil mechanics (details in whitepaper Section 10.5)
 
 ### Formal Verification (TBD)
 
