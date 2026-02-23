@@ -63,8 +63,14 @@ forge script script/DeployVault.s.sol:DeployVault \
 
 1. **Verify all contracts** on Arbiscan if `--verify` did not complete
 2. **Transfer VaultManager ownership** to a multisig (recommended: Safe 3-of-5)
-3. **Set fee parameters** via `vault.setFees(vaultE2, protocolE2, liquidatorE18)`
-4. **Monitor** deployment events and initial transactions
+3. **Set fee parameters** via `vault.setFees(vaultE2, protocolE2, liquidatorE18)`:
+   - Default vault fee: 300 basis points (3%)
+   - Default protocol fee: 200 basis points (2%)
+   - Default liquidator bounty: 15e12 (0.000015 tokens)
+   - On-chain caps: combined vault + protocol fee capped at 2000 bps (20%), bounty capped at 1e18
+4. **Set guardian** for emergency pause via `vault.setGuardian(guardianAddress)`
+5. **Deploy governance** (optional): run `script/DeployGovernance.s.sol` to set up a TimelockController with configurable delay (recommended 48-72h)
+6. **Monitor** deployment events and initial transactions
 
 ## Upgrade Process
 
