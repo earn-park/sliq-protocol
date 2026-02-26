@@ -757,4 +757,180 @@ contract VaultTest is Test {
         // shares = 2000e6 * 1000e6 / 1000e6 = 2000e6
         assertEq(bobShares, 2000e6);
     }
+
+    // ---- Oracle: Chainlink / Fallback ----
+
+    /// @dev Helper: warp to a reasonable timestamp and configure sequencer UP
+    function _setSequencerUp() internal {
+        vm.warp(100_000);
+        // status=0 => UP, startedAt > 1 hour ago (past grace period)
+        seq.setLatestRoundData(1, 0, block.timestamp - 2 hours, block.timestamp - 2 hours, 1);
+    }
+
+    /// @dev Helper: configure a valid Chainlink price feed answer
+    function _setFeedPrice(int256 answer) internal {
+        // roundId=1, answeredInRound=1, updatedAt=recent (fresh)
+        feed.setLatestRoundData(1, answer, block.timestamp - 60, block.timestamp - 60, 1);
+    }
+
+    function test_Oracle_ChainlinkHappyPath() public {
+        // Set slot0 to tick=0 (price=1.0)
+        uint160 sqrtPTick0 = TickMath.getSqrtRatioAtTick(0);
+        pool.setSlot0(sqrtPTick0, 0);
+
+        // Configure Chainlink: sequencer UP, feed=2e8 (price $2.00, 8 decimals)
+        // With d0==d1==6, priceE18=2e18, this maps to a positive tick (~6931)
+        _setSequencerUp();
+        _setFeedPrice(2e8);
+
+        int24 tick = vault.currentTick();
+        // If Chainlink is used, tick should NOT be 0 (the slot0 value)
+        assertTrue(tick != 0, "Should use Chainlink, not slot0");
+        // priceE18=2e18 → tick ~6931 (ln(2)/ln(1.0001))
+        assertGt(tick, 6900);
+        assertLt(tick, 6970);
+    }
+
+    function test_Oracle_SequencerDown_FallsBackToSlot0() public {
+        vm.warp(100_000);
+
+        // Set slot0 to tick=500
+        uint160 sqrtP500 = TickMath.getSqrtRatioAtTick(500);
+        pool.setSlot0(sqrtP500, 500);
+
+        // Sequencer DOWN (status=1) — even with valid feed, should fallback
+        seq.setLatestRoundData(1, 1, block.timestamp - 2 hours, block.timestamp - 2 hours, 1);
+        _setFeedPrice(2e8);
+
+        int24 tick = vault.currentTick();
+        assertEq(tick, 500, "Should fallback to slot0 when sequencer is down");
+    }
+
+    function test_Oracle_SequencerGracePeriod_FallsBackToSlot0() public {
+        vm.warp(100_000);
+
+        // Set slot0 to tick=500
+        uint160 sqrtP500 = TickMath.getSqrtRatioAtTick(500);
+        pool.setSlot0(sqrtP500, 500);
+
+        // Sequencer UP but just restarted 30 min ago (< 1 hour grace)
+        seq.setLatestRoundData(1, 0, block.timestamp - 30 minutes, block.timestamp - 30 minutes, 1);
+        _setFeedPrice(2e8);
+
+        int24 tick = vault.currentTick();
+        assertEq(tick, 500, "Should fallback during sequencer grace period");
+    }
+
+    function test_Oracle_StaleData_FallsBackToSlot0() public {
+        // Sequencer UP and healthy
+        _setSequencerUp();
+
+        // Set slot0 to tick=500
+        uint160 sqrtP500 = TickMath.getSqrtRatioAtTick(500);
+        pool.setSlot0(sqrtP500, 500);
+
+        // Feed data is stale: updatedAt = 2 hours ago (> STALENESS_THRESHOLD of 3600s)
+        feed.setLatestRoundData(1, 2e8, block.timestamp - 2 hours, block.timestamp - 2 hours, 1);
+
+        int24 tick = vault.currentTick();
+        assertEq(tick, 500, "Should fallback when feed data is stale");
+    }
+
+    function test_Oracle_NegativeAnswer_FallsBackToSlot0() public {
+        _setSequencerUp();
+
+        // Set slot0 to tick=500
+        uint160 sqrtP500 = TickMath.getSqrtRatioAtTick(500);
+        pool.setSlot0(sqrtP500, 500);
+
+        // Feed returns negative answer
+        feed.setLatestRoundData(1, -1, block.timestamp - 60, block.timestamp - 60, 1);
+
+        int24 tick = vault.currentTick();
+        assertEq(tick, 500, "Should fallback when feed answer is negative");
+    }
+}
+
+/// @dev Separate test contract using 18-decimal collateral (WETH-like)
+contract VaultTest18Dec is Test {
+    Vault public vault;
+    VaultManager public manager;
+    VaultMath public vaultMath;
+    MockERC20 public collateral;
+    MockUniswapV3Pool public pool;
+    MockNFPM public nfpm;
+    MockChainlinkFeed public seq;
+    MockChainlinkFeed public feed;
+
+    address owner = address(this);
+    address alice = address(0xA11CE);
+    uint256 anchorId = 1;
+
+    function setUp() public {
+        collateral = new MockERC20("WETH", "WETH", 18);
+        pool = new MockUniswapV3Pool();
+        nfpm = new MockNFPM();
+        vaultMath = new VaultMath();
+
+        uint160 sqrtP = TickMath.getSqrtRatioAtTick(0);
+        pool.setSlot0(sqrtP, 0);
+
+        nfpm.setPosition(anchorId, address(collateral), address(collateral), -1000, 1000, 1e18, 0, 0, 0, 0);
+        nfpm.setOwner(anchorId, owner);
+
+        seq = new MockChainlinkFeed(0);
+        seq.setLatestRoundData(1, 1, 0, 0, 1);
+        feed = new MockChainlinkFeed(8);
+        feed.setLatestRoundData(1, 0, 0, 0, 1);
+
+        Vault vaultImpl = new Vault();
+        manager = new VaultManager(address(vaultImpl), address(vaultMath));
+
+        address vaultAddr = manager.newVault(
+            address(pool), address(collateral), address(nfpm), anchorId, address(seq), address(feed)
+        );
+        vault = Vault(vaultAddr);
+
+        collateral.mint(alice, 100_000e18);
+        collateral.mint(owner, 100_000e18);
+
+        vm.prank(alice);
+        collateral.approve(address(vault), type(uint256).max);
+        collateral.approve(address(vault), type(uint256).max);
+    }
+
+    function test_18Dec_DeadSharesScaled() public {
+        vm.prank(alice);
+        uint256 shares = vault.deposit(10e18);
+
+        // deadShares = 10^18 / 1000 = 1e15
+        uint256 expectedShares = 10e18 - 1e15;
+        assertEq(shares, expectedShares, "Dead shares should be 1e15 for 18-decimal token");
+        assertEq(vault.totalSupply(), 10e18, "Total supply includes dead shares");
+    }
+
+    function test_18Dec_DepositWithdrawRoundTrip() public {
+        vm.prank(alice);
+        uint256 shares = vault.deposit(5e18);
+
+        vm.prank(alice);
+        uint256 withdrawn = vault.withdraw(shares);
+
+        // Should get back deposit minus dead shares (1e15 locked)
+        assertEq(withdrawn, 5e18 - 1e15, "Withdraw should return deposit minus dead shares");
+    }
+
+    function test_18Dec_OpenLongPosition() public {
+        vm.prank(alice);
+        vault.deposit(10e18);
+
+        vm.prank(alice);
+        uint256 id = vault.openLong(200, 1e18, Vault.Rolling.No);
+
+        (address posOwner,, uint256 posCollateral,,,,, bool active,) = vault.positions(id);
+        assertEq(posOwner, alice);
+        assertEq(posCollateral, 1e18);
+        assertTrue(active);
+        assertEq(vault.freezBalance(), 1e18);
+    }
 }

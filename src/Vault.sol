@@ -33,7 +33,9 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
     using SafeERC20 for IERC20;
 
     /* ~~~~ Constants ~~~~ */
-    uint256 private constant DEAD_SHARES = 1e3;
+    /// @dev Minimum dead shares divisor. Actual dead shares = 10^decimals / DEAD_SHARES_DIVISOR.
+    /// For WETH (18 dec): 1e15 (~0.001 ETH). For USDC (6 dec): 1e3 ($0.001).
+    uint256 private constant DEAD_SHARES_DIVISOR = 1000;
     uint256 private constant MAX_TOTAL_FEE_E2 = 2000;
     uint256 private constant MAX_BOUNTY_E18 = 1e18;
     uint256 private constant FEE_BUFFER_E18 = 13e17;
@@ -554,7 +556,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         il = _il;
         kE18 = _kE18;
         payout = result;
-        bounty = bountyLiquidatorE18;
+        bounty = vaultMath.fromE18(address(collateralToken), bountyLiquidatorE18);
 
         uint256 feeProtocol = (p.side == Side.Long ? fee : il) * uint256(feeProtocolPercentE2) / 10_000;
         int24 range = (p.tickUpper - p.tickLower) / 2;
@@ -664,9 +666,11 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         if (collateralToken.balanceOf(address(this)) - balBefore != amount) revert TransferAmountMismatch();
 
         if (totalSupply() == 0 && assetsBefore == 0) {
-            // First depositor: lock DEAD_SHARES to prevent share inflation attack
-            shares = amount - DEAD_SHARES;
-            _mint(address(1), DEAD_SHARES);
+            // First depositor: lock dead shares to prevent share inflation attack.
+            // Scales with token decimals: WETH (18 dec) = 1e15, USDC (6 dec) = 1e3.
+            uint256 deadShares = 10 ** uint256(_decimals) / DEAD_SHARES_DIVISOR;
+            shares = amount - deadShares;
+            _mint(address(1), deadShares);
         } else {
             shares = FullMath.mulDiv(amount, totalSupply(), assetsBefore);
         }
@@ -682,7 +686,7 @@ contract Vault is Initializable, ERC20Upgradeable, OwnableUpgradeable, Reentranc
         if (shares == 0 || balanceOf(msg.sender) < shares) revert BadShares();
         if (unfreezeAssets < totalSupply()) revert InsufficientLiquidity();
 
-        amount = (shares * unfreezeAssets) / totalSupply();
+        amount = FullMath.mulDiv(shares, unfreezeAssets, totalSupply());
         _burn(msg.sender, shares);
 
         collateralToken.safeTransfer(msg.sender, amount);

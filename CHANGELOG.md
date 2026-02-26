@@ -19,7 +19,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Liquidation system with fixed bounty and keeper incentives
 - Checkpoint-based cumulative fee tracking
 - Solidity interfaces: `IVault`, `IVaultManager`, `IVaultMath`
-- 109 tests (93 unit + 16 fuzz) with full CI pipeline
+- 141 tests (123 unit + 16 fuzz + 2 invariant) with full CI pipeline
 - Comprehensive documentation (ARCHITECTURE, SECURITY, MATH, MARKET_ANALYSIS)
 - Deployment on Arbitrum One (live beta)
 

@@ -126,12 +126,14 @@ graph TD
 
 ## Deployments
 
+This repository contains the development version of sLiq Protocol contracts. The live beta on Arbitrum One runs a previous contract version; addresses are available upon request. This codebase reflects the next iteration currently in active development.
+
 | Network | Contract | Address |
 |---------|----------|---------|
-| Arbitrum One | VaultManager | *Beta -- contact team* |
-| Arbitrum One | VaultMath | *Beta -- contact team* |
-| Arbitrum One | Vault (implementation) | *Beta -- contact team* |
-| Arbitrum One | Vault (WETH/USDC proxy) | *Beta -- contact team* |
+| Arbitrum One | VaultManager | *Available upon request* |
+| Arbitrum One | VaultMath | *Available upon request* |
+| Arbitrum One | Vault (implementation) | *Available upon request* |
+| Arbitrum One | Vault (WETH/USDC proxy) | *Available upon request* |
 
 ---
 
@@ -143,7 +145,7 @@ cd sliq-protocol
 
 forge install          # install dependencies
 forge build            # compile contracts
-forge test             # run all tests (131 unit + fuzz)
+forge test             # run all tests (141: unit + fuzz + invariant)
 forge test --gas-report # with gas reporting
 ```
 
@@ -162,15 +164,28 @@ Copy `.env.example` to `.env` and fill in your RPC URLs and API keys for fork te
 
 | Suite | Tests | Description |
 |-------|-------|-------------|
-| Unit: Vault | 61 | Deposit, withdraw, open, close, checkpoint, liquidate, rolling, pausable, guardian, invariants |
+| Unit: Vault | 69 | Deposit, withdraw, open, close, checkpoint, liquidate, rolling, pausable, guardian, oracle, cross-decimal |
 | Unit: VaultManager | 14 | Deploy, upgrade, access control, multi-vault |
 | Unit: VaultMath | 40 | Price conversions, IL, fees, effective liquidity, triangular numbers |
 | Fuzz: VaultMath | 16 | Property-based testing (1,000 runs each) -- roundtrips, monotonicity, bounds |
+| Invariant: Vault | 2 | Stateful invariant testing (256 runs each) -- collateral accounting, vault solvency |
 
 ```bash
 forge test -vvv                      # verbose output
 forge coverage --ir-minimum          # coverage report
 ```
+
+---
+
+## Development Process
+
+This protocol was developed using AI-assisted tooling (Claude, GitHub Copilot) with mandatory human review at every stage. Specifically:
+
+- **Architecture and math**: Designed by the EarnPark team. IL formulas are derived from standard Uniswap V3 concentrated liquidity math; the K-multiplier skew mechanism is original (see [MATH.md](./docs/MATH.md#mathematical-origins)).
+- **Implementation**: AI-assisted with manual code review for all contract logic, access control, and external interactions.
+- **Testing**: 141 tests (123 unit + 16 fuzz + 2 invariant) covering oracle paths, share accounting, position lifecycle, and economic invariants. CI runs build, test, format check, and Slither static analysis on every push.
+- **Internal security review**: Completed, covering economic attack modeling, business logic audit, and static analysis. See [SECURITY.md](./docs/SECURITY.md).
+- **Third-party audit**: Planned prior to mainnet launch (Milestone 2).
 
 ---
 

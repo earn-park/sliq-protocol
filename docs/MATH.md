@@ -6,6 +6,23 @@ formatting for readability. Every formula is verified against `VaultMath.sol` an
 
 ---
 
+## Mathematical Origins
+
+The formulas in this document fall into two categories:
+
+**Standard / derived from existing work:**
+- The **Impermanent Loss formula** (Section 1) is derived from the standard Uniswap V3 concentrated liquidity mechanics described in the [Uniswap V3 Whitepaper](https://uniswap.org/whitepaper-v3.pdf) (Adams et al., 2021). The IL formula for concentrated positions is well-established in academic literature, including Echenim, Gobet & Maurice, ["Uniswap v3: impermanent loss modeling and swap fees asymptotic analysis"](https://hal.science/hal-04214315) (2023) and Deng, Zong & Wang, ["Static Replication of Impermanent Loss for Concentrated Liquidity Provision"](https://arxiv.org/abs/2205.12043) (2023).
+- **Price conversion utilities** (Section 7) use standard Uniswap V3 tick math (`1.0001^tick` encoding, `sqrtPriceX96` format) as defined in the Uniswap V3 core contracts.
+- **Vault share accounting** (Section 10) follows the ERC-4626 tokenized vault standard.
+
+**Original to sLiq Protocol:**
+- The **K-multiplier / skew mechanism** (Section 4) — a self-balancing fee distribution model where the K-factor dynamically adjusts based on the ratio of long vs. short effective liquidity. This creates a natural incentive gradient without external hedging or governance intervention.
+- **Effective liquidity** (Section 2) — normalization of position size using the triangular number formula applied to tick ranges, producing a leverage-adjusted measure of exposure.
+- **Fee distribution model** (Section 5) — checkpoint-based cumulative fee accounting with time-weighted skew integration, enabling accurate PnL for positions opened at arbitrary times.
+- **Liquidation conditions** (Section 11) — asymmetric liquidation triggers for long (range exit) vs. short (fee accumulation exceeds collateral) positions.
+
+---
+
 ## Table of Contents
 
 1. [Impermanent Loss Formula](#1-impermanent-loss-formula)
