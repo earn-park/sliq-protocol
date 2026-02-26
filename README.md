@@ -229,7 +229,7 @@ Please see [`CONTRIBUTING.md`](./CONTRIBUTING.md) for guidelines.
 
 ## License
 
-This project is licensed under the [Business Source License 1.1](./LICENSE) (BUSL-1.1).
+This project is licensed under the [Business Source License 1.1](./LICENSE) (BUSL-1.1). The license parameters — including the Additional Use Grant, Change Date, and Change License — may be revised in future versions as the protocol's governance and ecosystem integration mature. Any changes will be announced publicly and will apply only to new versions of the Licensed Work.
 
 ## Disclaimer
 

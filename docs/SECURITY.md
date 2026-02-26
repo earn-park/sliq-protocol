@@ -242,6 +242,10 @@ The final decision will depend on regulatory considerations, community feedback,
 
 The protocol contracts are designed to eventually operate independently under on-chain governance. The progressive decentralization path (EOA → multisig → DAO) ensures that the protocol can function without any single entity. The exact relationship between EarnPark's broader product ecosystem and sLiq Protocol governance will be defined transparently as the protocol matures.
 
+### Will the license terms change?
+
+The protocol is licensed under [BUSL-1.1](../LICENSE). The current license parameters (Additional Use Grant: None, Change Date: 2028-02-23, Change License: GPLv2+) may be revised in future versions — for example, to add an Additional Use Grant for Arbitrum-native deployments or to adjust the Change Date. Any changes will apply only to new versions and will be announced publicly.
+
 ### Is `vsLP` a transferable token?
 
 Yes. `vsLP` is a standard ERC-20 token (via `ERC20Upgradeable`) representing LP shares. It can be transferred, used as collateral in other protocols, or integrated into DeFi composability flows.
