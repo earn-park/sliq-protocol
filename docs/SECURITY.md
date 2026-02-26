@@ -64,16 +64,34 @@ The anchor Uniswap V3 NFT (`anchorId`) is set during initialization and cannot b
 
 If the price moves permanently outside the anchor range, fee accrual drops to zero, and the system stops generating yield for positions.
 
-### 3. Share Accounting
+### 3. Share Accounting and Utilization-Based Withdrawals
 
 The first deposit locks dead shares at `address(1)` to prevent share inflation attacks. The dead shares amount scales with the collateral token's decimals: `10^decimals / 1000`. This ensures meaningful protection regardless of the token:
 - **WETH (18 decimals)**: 1e15 dead shares (~0.001 ETH, ~$2-3) — makes donation-based inflation attacks economically unfeasible.
 - **USDC (6 decimals)**: 1e3 dead shares ($0.001) — standard ERC-4626 protection.
 
 Subsequent deposits use standard ERC-4626-like share accounting (`shares = amount * totalSupply / totalAssets`).
-- The withdrawal liquidity check (`unfreezeAssets >= totalSupply`) may block withdrawals when a large fraction of vault assets is locked in position collateral (`freezBalance`).
-- There is no withdrawal queue or pro-rata mechanism; first-come-first-served withdrawal applies.
-- Partial payouts emit a `PayoutShortfall` event and record the actual amount paid, rather than silently truncating.
+
+**Utilization-based withdrawal constraint:** LP withdrawals are governed by a utilization model structurally similar to lending protocols (Aave, Compound). The vault tracks two asset pools:
+
+```
+unfreezeAssets = totalBalance − freezBalance
+```
+
+- `totalBalance`: all collateral tokens held by the vault (LP deposits + position collateral).
+- `freezBalance`: collateral locked in active trader positions.
+- `unfreezeAssets`: available for LP withdrawals.
+
+When `unfreezeAssets < totalSupply`, `withdraw()` reverts with `InsufficientLiquidity` (`Vault.sol:684-695`). This is a **utilization-based constraint**, not a time-lock — there is no fixed waiting period. As positions close and release collateral, withdrawal capacity increases automatically.
+
+This design ensures:
+- Active position collateral is never distributed to withdrawing LPs (vault solvency).
+- LPs can withdraw freely when vault utilization is low.
+- During high utilization (many open positions), withdrawals may be temporarily blocked.
+
+There is no withdrawal queue or pro-rata mechanism; first-come-first-served withdrawal applies. Partial payouts emit a `PayoutShortfall` event and record the actual amount paid, rather than silently truncating.
+
+See [ARCHITECTURE.md — Utilization-Based Withdrawal Model](./ARCHITECTURE.md#utilization-based-withdrawal-model) for the full design description.
 
 ### 4. Liquidation Bounty
 

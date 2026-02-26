@@ -116,7 +116,7 @@ graph TD
 ### Key Features
 
 - **Perpetual positions** -- no epoch locks, no expiry. Open and close at any time.
-- **Leverage from range width** -- narrower tick ranges produce higher leverage (up to 1000x), derived from the IL formula.
+- **Leverage from range width** -- narrower tick ranges produce higher leverage (up to ~660x with current `MIN_RANGE=60`; up to 1000x planned via Phase 2 range expansion), derived from the IL formula. See [MATH.md Section 3](./docs/MATH.md#3-leverage-from-range-width).
 - **Chainlink oracle primary** -- Chainlink price feeds with Arbitrum sequencer uptime checks; falls back to `pool.slot0()` only when Chainlink is unavailable.
 - **Beacon proxy upgradeability** -- all vaults share a single implementation via `UpgradeableBeacon`, enabling atomic upgrades across all markets.
 - **Auto-rolling positions** -- positions can be configured to automatically re-open on liquidation (direct, inverse-minus, or inverse-plus rolling strategies).
@@ -213,6 +213,10 @@ This codebase has undergone internal security review covering static analysis, e
 | [CHANGELOG.md](./CHANGELOG.md) | Release history (Common Changelog format) |
 
 ---
+
+## Advisors
+
+- **Anton Bukov** — co-founder of [1inch Network](https://1inch.io), advisor and early backer of sLiq Protocol.
 
 ## Links
 

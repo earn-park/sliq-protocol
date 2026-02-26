@@ -6,6 +6,35 @@ formatting for readability. Every formula is verified against `VaultMath.sol` an
 
 ---
 
+## Mathematical Foundation
+
+### Tick Math as Discrete Log-Normal Price Model
+
+Uniswap V3 encodes prices on a discrete tick grid where the price at tick $t$ is:
+
+$$P(t) = 1.0001^{\,t}$$
+
+Taking the logarithm: $\ln P(t) = t \cdot \ln(1.0001) \approx t \cdot 10^{-4}$. This means each tick represents a constant increment in **log-price space** — a property shared with the discrete-time version of geometric Brownian motion (GBM).
+
+In continuous-time finance, GBM models asset prices as:
+
+$$dS = \mu S\,dt + \sigma S\,dW_t \quad \Longrightarrow \quad \ln S(t) \sim \mathcal{N}\!\left(\ln S(0) + (\mu - \tfrac{\sigma^2}{2})t,\; \sigma^2 t\right)$$
+
+The Uniswap V3 tick grid is a **discrete-time analogue** of this log-normal price model: prices evolve on an exponential lattice where each step is multiplicative ($\times 1.0001$), producing log-normal price distributions over time. The IL formula $\text{IL\%}(r) = 1.0001^r - \sqrt{1.0001^r}$ is derived from the same log-normal price dynamics that underpin Black-Scholes and GBM-based option pricing.
+
+sLiq leverages this mathematical connection: the IL payoff of a concentrated liquidity position is structurally equivalent to a variance payoff under log-normal price dynamics. The K-multiplier is an original algebraic construct that redistributes this payoff between market participants without requiring stochastic simulation or Monte Carlo methods — all computation is deterministic and on-chain.
+
+### Implied Volatility from Skew Equilibrium
+
+When the K-multiplier reaches equilibrium ($K_{\text{long}} \approx K_{\text{short}} \approx 1.0$), the market-clearing price of IL exposure implicitly encodes a **volatility expectation**. This is analogous to how option premiums in traditional markets encode implied volatility (IV):
+
+- In options markets: $\text{option price} \xrightarrow{\text{Black-Scholes inversion}} \sigma_{\text{implied}}$
+- In sLiq: $\text{skew equilibrium price of IL} \xrightarrow{\text{range-adjusted normalization}} \text{volatility expectation}$
+
+At equilibrium, the fee/IL balance reflects the market's consensus on expected price movement within the position range. A wider range commands a higher IL payoff per unit of collateral, analogous to a higher strike spread in options. The effective "premium" (fee cost for shorts, IL risk for longs) adjusts as traders enter and exit, converging toward a fair price for IL exposure.
+
+This volatility signal is currently observable off-chain by analyzing skew equilibrium data. On-chain IV derivation from the K-multiplier state is a planned protocol enhancement (see [ROADMAP.md](./ROADMAP.md)).
+
 ## Mathematical Origins
 
 The formulas in this document fall into two categories:

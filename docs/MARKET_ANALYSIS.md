@@ -51,11 +51,13 @@ Arbitrum is the largest L2 by DeFi TVL and hosts deep Uniswap V3 liquidity pools
 
 **Current status (Feb 2026):** Smilee's original Arbitrum deployment has effectively wound down. DeFiLlama shows $14,761 TVL on Arbitrum with zero recent options volume. The protocol has pivoted to Berachain, where it operates a Liquid Staking Token (gBERA) product with ~$2.96M TVL -- a fundamentally different product from its original IL trading offering.
 
+**Background:** Smilee raised $2M in seed funding (2023). At peak, the Arbitrum deployment reached $2-3M TVL with approximately 166 active traders. The protocol used Black-Scholes-based pricing for its options-style IL products, with delta-hedging to manage LP risk. Source: [Smilee Finance documentation](https://docs.smilee.finance), [Crunchbase](https://www.crunchbase.com/organization/smilee-finance), [DeFiLlama](https://defillama.com/protocol/smilee-finance).
+
 **Why it matters:** Smilee validated that demand exists for IL-derived trading products. Its challenges on Arbitrum stemmed from design constraints, not market absence. Key structural issues included:
 
 - **Epoch lock-in**: Fixed 7-day epochs locked trader capital and fragmented liquidity across time periods.
 - **LP payoff asymmetry**: LPs took the opposite side of trader positions (variance selling), creating uncapped downside risk. When token incentives ended, LP capital left.
-- **Delta-hedging costs**: On-chain hedging incurred gas costs, slippage, and keeper infrastructure overhead, eroding LP returns.
+- **Delta-hedging costs**: Black-Scholes-based pricing required on-chain delta hedging, incurring gas costs, slippage, and keeper infrastructure overhead, eroding LP returns.
 - **Liquidity bootstrapping**: Epochs prevented the protocol from concentrating liquidity, making it difficult to attract both sides simultaneously.
 
 The pivot to Berachain LST suggests the original Arbitrum product did not achieve sustainable product-market fit.

@@ -60,6 +60,9 @@ The protocol follows a progressive decentralization path:
 ### Protocol Enhancements
 
 - [x] **On-chain fee caps** -- `MAX_TOTAL_FEE_E2 = 2000` (20%), `MAX_BOUNTY_E18 = 1e18`, with `FeesUpdated` event
+- [ ] **Per-LP delta exposure view** -- on-chain function computing each LP's net delta (directional price exposure) from vault state. LP shares represent pro-rata claims on the vault, whose net exposure depends on the long/short position balance. This view would enable LPs to assess and hedge their residual directional risk. Planned for Phase 2.
+- [ ] **On-chain implied volatility derivation** -- extract a volatility signal from the K-multiplier skew equilibrium state, enabling the protocol to natively produce an IV metric analogous to VIX. Planned for Phase 2.
+- [ ] **Leverage range expansion** -- reduce `MIN_RANGE` from 60 to ~39 ticks, enabling leverage up to ~1000x (currently capped at ~660x). Requires additional precision testing for narrow-range IL calculations. Planned for Phase 2.
 - [ ] **Anchor position governance** -- anchor NFT ownership via multisig or watchdog contract, with rebalancing mechanism as price drifts
 - [ ] **TWAP oracle fallback** -- integrate `pool.observe()` as secondary fallback between Chainlink and raw `slot0()`
 - [ ] **Oracle deviation checks** -- compare Chainlink price to pool price, revert if deviation exceeds threshold
