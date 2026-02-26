@@ -237,15 +237,17 @@ During beta, the VaultManager owner is a single EOA. This enables fast iteration
 
 ### Does sLiq have a governance token?
 
-Not currently. sLiq Protocol does not have its own token. The governance roadmap (see [Governance Progression](#governance-progression)) outlines a phased approach:
+Not currently. sLiq Protocol does not have its own dedicated token. The governance roadmap (see [Governance Progression](#governance-progression)) outlines a phased approach:
 
 - **M1-M3**: Governance via multisig + timelock. No token required.
 - **M4+**: On-chain governance is under consideration as a potential final decentralization step.
 
+**PARK token (EarnPark ecosystem token)**: During the beta phase, the PARK token — the EarnPark ecosystem token — serves as an interim bootstrapping mechanism for sLiq. PARK is used for liquidator participation incentives and community engagement within the sLiq ecosystem. This leverages EarnPark's existing user base (22,000+ users) and infrastructure to accelerate sLiq's initial adoption. The PARK integration is operational, not embedded in the core sLiq smart contracts — the Vault, VaultManager, and VaultMath contracts are token-agnostic.
+
 The governance token question remains open and is subject to ongoing discussion. Several options are being evaluated:
 
 1. **A dedicated sLiq governance token** — purpose-built for the protocol, with its own distribution and voting mechanics.
-2. **Integration with an existing ecosystem token** (e.g., an EarnPark token or an Arbitrum-native mechanism) — leveraging an established holder base.
+2. **Continued use of the PARK token** with sLiq-specific governance features — leveraging the established EarnPark holder base.
 3. **No token at all** — governance could remain multisig-based with expanded signer sets and community oversight, without introducing a token.
 
 The final decision will depend on regulatory considerations, community feedback, ecosystem alignment, and whether token-based governance genuinely serves the protocol's security and decentralization goals better than alternatives. No commitment to any specific token model has been made. If a governance token is introduced, its design, distribution, and voting parameters will be specified in a separate public governance proposal well in advance.

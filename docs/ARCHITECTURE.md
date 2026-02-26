@@ -239,6 +239,8 @@ The effective cost of holding a position in sLiq is not a fixed protocol paramet
 
 The combination produces a cost structure that responds to market conditions: in volatile markets with active trading, positions generate more fee income; when one side is in high demand, the opposite side becomes more attractive. Protocol fees (`feeVaultPercentE2`, `feeProtocolPercentE2`) are fixed by the vault owner and do not auto-adjust — only the Uniswap anchor fees and K-multiplier scaling are market-responsive.
 
+**Pricing model evolution (v2):** The current implementation (v1) derives fees from the anchor Uniswap V3 position's trading activity. The v2 model, currently in development, replaces this with a GBM-based implied volatility pricing system where fees are computed internally from market conditions and the K-multiplier equilibrium state, decoupling the protocol from the anchor's fee accrual. The IL formula, K-multiplier mechanism, and position lifecycle remain unchanged. See [MATH.md — Pricing Model Evolution](./MATH.md#pricing-model-evolution-from-anchor-fees-to-gbm-based-implied-volatility) for details.
+
 ## LP Model
 
 ### Deposit and Yield
