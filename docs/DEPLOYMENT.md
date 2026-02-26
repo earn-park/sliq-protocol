@@ -112,12 +112,12 @@ This script:
 
 After this, the ownership chain is:
 
-```
-Safe Multisig (3-of-5)
-  └─ proposes/executes on ──▶ TimelockController (48h delay)
-                                └─ owns ──▶ VaultManager
-                                              ├─ UpgradeableBeacon (vault implementation)
-                                              └─ newVault(), setVaultMath()
+```mermaid
+graph LR
+    Safe["Safe Multisig<br/>(3-of-5)"] -- "proposes/executes" --> TLC["TimelockController<br/>(48h delay)"]
+    TLC -- "owns" --> VM["VaultManager"]
+    VM --> Beacon["UpgradeableBeacon<br/>(vault implementation)"]
+    VM --> Ops["newVault(), setVaultMath()"]
 ```
 
 ### 3. Verify Ownership Transfer

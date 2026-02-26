@@ -43,27 +43,16 @@ The formulas in this document fall into two categories:
 
 ## System Overview
 
-```
-                          sLiq Vault Architecture
-    ┌─────────────────────────────────────────────────────────────┐
-    │                        Vault Contract                       │
-    │                                                             │
-    │  ┌──────────┐    ┌──────────┐    ┌──────────────────────┐  │
-    │  │  LP Pool  │    │Checkpoint│    │   Position Storage   │  │
-    │  │ (Anchor)  │───>│  Array   │───>│  Long[] / Short[]    │  │
-    │  └──────────┘    └──────────┘    └──────────────────────┘  │
-    │       │               │                    │                │
-    │       v               v                    v                │
-    │  ┌──────────┐   ┌──────────┐    ┌──────────────────────┐  │
-    │  │ Fee Accum │   │ Skew Cum │    │    PnL Calculation   │  │
-    │  │ (Q128.128)│   │(E18*sec) │    │  IL +/- Fee * K      │  │
-    │  └──────────┘   └──────────┘    └──────────────────────┘  │
-    │                                                             │
-    │  ┌──────────────────────────────────────────────────────┐  │
-    │  │                    VaultMath                          │  │
-    │  │  calcFees | _ilPercentE18 | _effLiquidity | ...      │  │
-    │  └──────────────────────────────────────────────────────┘  │
-    └─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Vault["Vault Contract"]
+        LP["LP Pool<br/>(Anchor)"] --> CP["Checkpoint Array"]
+        CP --> PS["Position Storage<br/>Long[] / Short[]"]
+        LP --> FA["Fee Accum<br/>(Q128.128)"]
+        CP --> SC["Skew Cum<br/>(E18*sec)"]
+        PS --> PNL["PnL Calculation<br/>IL +/- Fee * K"]
+        VM["VaultMath<br/>calcFees | _ilPercentE18 | _effLiquidity | ..."]
+    end
 ```
 
 ### Calculation Flow
@@ -124,27 +113,12 @@ where:
 
 ### IL Curve Visualization
 
-```
-  IL%
-   ^
-   |
-30%|                                                    *
-   |                                               *
-   |                                          *
-20%|                                     *
-   |                                *
-   |                           *
-10%|                      *
-   |                 *
-   |            *
- 5%|        *
-   |     *
-   |   *
- 1%| *
-   +--+---+---+----+----+-----+------+-------+-------->
-     100  500 1000 2000 5000 10000  20000  50000   range (ticks)
-
-  IL%(r) = 1.0001^r - 1.0001^(r/2)
+```mermaid
+xychart-beta
+    title "IL%(r) = 1.0001^r - 1.0001^(r/2)"
+    x-axis "Range (ticks)" [100, 500, 1000, 2000, 5000, 10000, 20000, 50000]
+    y-axis "IL %" 0 --> 35
+    line [0.5, 2.5, 5.4, 11.2, 36.5, 107, 210, 320]
 ```
 
 ### Implementation
@@ -293,26 +267,12 @@ is sub-linear with range, so narrower ranges produce higher leverage overall.
 
 ### Leverage Curve
 
-```
-  leverage
-      ^
-      |
- 800x |*
-      |
- 400x | *
-      |
- 200x |  *
-      |
- 100x |    *
-      |       *
-  50x |          *
-      |              *
-  10x |                        *
-   5x |                                    *
-   1x +----+----+-----+------+---------+---------->
-     100  500  1000  2000   5000     10000    range (ticks)
-
-  L = 2 / IL%(r)
+```mermaid
+xychart-beta
+    title "Leverage = 2 / IL%(r)"
+    x-axis "Range (ticks)" [100, 500, 1000, 2000, 5000, 10000]
+    y-axis "Leverage (x)" 0 --> 400
+    line [397, 79, 37, 18, 5.5, 1.9]
 ```
 
 ### Implementation
@@ -372,30 +332,16 @@ When the sides are balanced ($E_L = E_S$), both K values equal 1.0.
 
 ### Skew Behavior Diagram
 
+```mermaid
+xychart-beta
+    title "K-multiplier vs Long:Short ratio"
+    x-axis "Long % of total" [0, 20, 40, 50, 60, 80, 100]
+    y-axis "K value" 0 --> 2.1
+    line "K_long" [0, 0.4, 0.8, 1.0, 1.2, 1.6, 2.0]
+    line "K_short" [2.0, 1.6, 1.2, 1.0, 0.8, 0.4, 0]
 ```
-  K value
-    ^
-    |
- 2.0|*                                                    *
-    | *                                                  *
-    |  *                                                *
- 1.5|   *                                              *
-    |    *                                            *
-    |     *                                          *
- 1.0|------*---------+--------+---------+-----------*-----
-    |       *                                      *
-    |        *                                    *
- 0.5|         *                                  *
-    |          *                                *
-    |           *                              *
- 0.0|            *----+--------+--------+----*
-    +------+------+--------+--------+------+------->
-     0:100  20:80   40:60   50:50   60:40  80:20  100:0
-                  Long:Short effective liquidity ratio
 
-    ---- K_long (rewards minority longs)
-    **** K_short (rewards minority shorts)
-```
+K_long rewards minority longs (increases as longs are underrepresented). K_short rewards minority shorts (increases as shorts are underrepresented). At balance (50:50), both equal 1.0.
 
 ### Fee-Deducted K (Instantaneous)
 
@@ -484,24 +430,27 @@ for positions opened and queried within the same block.
 
 ### Checkpoint Timing Diagram
 
+```mermaid
+gantt
+    title K_short (raw, unscaled) over time
+    dateFormat X
+    axisFormat %s
+    section K=1.0
+        t0 to t1 (K=1.0)   : 0, 10
+    section K=1.5
+        t1 to t2 (K=1.5)   : 10, 30
+    section K=1.0
+        t2 to t3 (K=1.0)   : 30, 35
+    section K=0.5
+        t3 to t4 (K=0.5)   : 35, 60
 ```
-  K_short (raw, unscaled)
-    ^
- 1.5|     ┌──────┐
-    |     │      │
- 1.0|─────┘      └──────────────┐
-    |                           │
- 0.5|                           └──────
-    +--+--+------+--+-----------+-------> time
-       t0  t1    t2  t3         t4
 
-  skewShortCum accumulates area under the curve:
-    skewCum[t2] = skewCum[t1] + 1.5e18 * (t2 - t1)
-    skewCum[t3] = skewCum[t2] + 1.0e18 * (t3 - t2)
+`skewShortCum` accumulates the area under the K curve:
+- `skewCum[t2] = skewCum[t1] + 1.5e18 * (t2 - t1)`
+- `skewCum[t3] = skewCum[t2] + 1.0e18 * (t3 - t2)`
 
-  Position opened at t1, closed at t4:
-    K_eff = (skewCum[t4] - skewCum[t1]) * 9500 / (10000 * (t4 - t1))
-```
+Position opened at t1, closed at t4:
+`K_eff = (skewCum[t4] - skewCum[t1]) * 9500 / (10000 * (t4 - t1))`
 
 ### Boundary Conditions
 
@@ -524,32 +473,24 @@ using Uniswap V3's fee growth accumulators in Q128.128 fixed-point format.
 
 ### Fee Growth Inside Calculation
 
+```mermaid
+graph LR
+    subgraph TickSpace["Uniswap V3 Tick Space"]
+        direction LR
+        BL["...below..."] --- TL["tickLower"]
+        TL --- PR["Position Range"]
+        PR --- TU["tickUpper"]
+        TU --- AB["...above..."]
+    end
 ```
-                     Uniswap V3 Tick Space
-  <────────────────────────────────────────────────────>
 
-  feeGrowthGlobal: accumulated fees across ALL ticks
+**`feeGrowthGlobal`**: accumulated fees across ALL ticks.
 
-         lower0            upper0
-           │                  │
-  ─────────┼──────────────────┼──────────────
-           │   position range │
-           │   (tickLower to  │
-           │    tickUpper)    │
-           │                  │
-
-  Case 1: tickCurrent < tickLower (price below range)
-    fgInside = lower - upper
-    (fees are "above" both ticks, cancel via subtraction)
-
-  Case 2: tickCurrent >= tickUpper (price above range)
-    fgInside = upper - lower
-    (fees are "below" both ticks)
-
-  Case 3: tickLower <= tickCurrent < tickUpper (price inside)
-    fgInside = fgGlobal - lower - upper
-    (subtract outside portions from global)
-```
+| Case | Condition | Formula | Rationale |
+|------|-----------|---------|-----------|
+| 1 | `tickCurrent < tickLower` (price below range) | `fgInside = lower - upper` | Fees are "above" both ticks, cancel via subtraction |
+| 2 | `tickCurrent >= tickUpper` (price above range) | `fgInside = upper - lower` | Fees are "below" both ticks |
+| 3 | `tickLower <= tickCurrent < tickUpper` (price inside) | `fgInside = fgGlobal - lower - upper` | Subtract outside portions from global |
 
 ### Formula
 
@@ -630,19 +571,10 @@ uint256 wFee = FullMath.mulDiv(totalFee, liqShareE18, 13e17);
 
 The K-multiplier is applied differently depending on the position side:
 
-```
-  ┌─────────────────────────────────────────────────┐
-  │  LONG positions:                                │
-  │    fee_credited = wFee * K_long                 │
-  │    il_charged   = ilCalc        (raw, no K)     │
-  │    result = collateral + fee - il               │
-  │                                                 │
-  │  SHORT positions:                               │
-  │    fee_charged  = wFee          (raw, no K)     │
-  │    il_credited  = ilCalc * K_short              │
-  │    result = collateral - fee + il               │
-  └─────────────────────────────────────────────────┘
-```
+| Side | Fee | IL | Result |
+|------|-----|----|--------|
+| **Long** | `fee_credited = wFee * K_long` | `il_charged = ilCalc` (raw, no K) | `collateral + fee - il` |
+| **Short** | `fee_charged = wFee` (raw, no K) | `il_credited = ilCalc * K_short` | `collateral - fee + il` |
 
 - **Long positions**: Fees are income scaled by $K_{\text{long}}$. IL is charged at the
   raw (unscaled) rate. Longs profit when price moves (generating IL) less than the fees
@@ -745,23 +677,15 @@ $$\text{ilCalc} = \text{position} \times \text{ilMovePercent}$$
 In concentrated liquidity, as price moves from the center toward the boundary, tokens
 are progressively swapped. At displacement $m$ within range $r$:
 
+```mermaid
+xychart-beta
+    title "Token composition as price moves through range"
+    x-axis "Position in range" ["tickLower (m=r)", "", "", "tickMid (m=0)", "", "", "tickUpper (m=r)"]
+    y-axis "% Token0" 0 --> 100
+    line [100, 83, 67, 50, 33, 17, 0]
 ```
-  Token composition as price moves through range
 
-  100% Token0 |                                    /
-              |                                  /
-              |                               /
-              |                            /
-   50%        |                         /
-              |                      /
-              |                   /   <-- at displacement m,
-              |                /       tokenTrade fraction
-              |             /          has been exchanged
-              |          /
-    0% Token0 |_______/________________________________>
-              tickLower    tickMid      tickUpper
-              (m=r)        (m=0)        (m=r)
-```
+At displacement $m$ within range $r$, the `tokenTrade` fraction of tokens has been exchanged.
 
 The remaining untraded fraction is $\frac{\sqrt{P_u} - \sqrt{P_t}}{\sqrt{P_t}(\sqrt{P_u} - 1)}$,
 so the traded fraction is one minus that.
@@ -803,23 +727,19 @@ $$T(n) = \frac{n(n+1)}{2} \qquad \text{(triangular number)}$$
 
 ### Multi-Range IL Visualization
 
+```mermaid
+graph LR
+    subgraph Ranges["Price displacement from center (ticks)"]
+        direction LR
+        R3["k=3<br/>3*c + T(2)*pr<br/><i>3r to 2r</i>"]
+        R2["k=2<br/>2*c + T(1)*pr<br/><i>2r to r</i>"]
+        R1["k=1<br/>c + 0<br/><i>r to 0</i>"]
+        RP["partial<br/>frac*c + k*lm<br/><i>0 to remainder</i>"]
+        R3 --- R2 --- R1 --- RP
+    end
 ```
-  Price
-    ^
-    |           k=3      k=2      k=1     partial
-    |            |        |        |        |
-    |  +---------+--------+--------+--------+---
-    |  |   3*c   |  2*c   |   c    | frac*c |
-    |  |   +     |  +     |  +     | +      |
-    |  | T(2)*pr | T(1)*pr|  0     | k*lm   |
-    |  +---------+--------+--------+--------+---
-    |
-    +--+---------+--------+--------+--------+--> ticks from center
-       3r        2r        r       0    remainder
 
-  Total IL = k*c + T(k-1)*perRangeTerm + k*lastMoveTerm + partialIL
-  (where partialIL comes from Case 1 for the remainder)
-```
+**Total IL** = `k*c + T(k-1)*perRangeTerm + k*lastMoveTerm + partialIL` (where `partialIL` comes from Case 1 for the remainder).
 
 ### Safe Short Rule
 
@@ -1045,21 +965,12 @@ costs:
 
 $$T(n) = \frac{n(n+1)}{2} = \sum_{i=1}^{n} i$$
 
-```
-  T(n)
-    ^
-    |                              *
- 15 |                           *
-    |                        *
- 10 |                     *
-    |                  *
-  6 |               *
-    |            *
-  3 |         *
-    |      *
-  1 |   *
-    +--+--+--+--+--+--+--+--+-->
-       1  2  3  4  5  6  7  8   n
+```mermaid
+xychart-beta
+    title "T(n) = n(n+1)/2"
+    x-axis "n" [1, 2, 3, 4, 5, 6, 7, 8]
+    y-axis "T(n)" 0 --> 40
+    line [1, 3, 6, 10, 15, 21, 28, 36]
 ```
 
 **Function**: `VaultMath.triangularNumber()` (line 211)

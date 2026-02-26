@@ -201,15 +201,15 @@ The K-multiplier is the core mechanism that keeps the vault balanced without ext
 
 The system uses OpenZeppelin's Beacon Proxy pattern.
 
-```
-VaultManager (owner)
-  |
-  v
-UpgradeableBeacon (stores implementation address)
-  |
-  +--> BeaconProxy (Pool A) --delegatecall--> Vault Implementation v1
-  +--> BeaconProxy (Pool B) --delegatecall--> Vault Implementation v1
-  +--> BeaconProxy (Pool N) --delegatecall--> Vault Implementation v1
+```mermaid
+graph TD
+    VM["VaultManager (owner)"] --> Beacon["UpgradeableBeacon<br/>(stores implementation address)"]
+    Beacon --> BPA["BeaconProxy (Pool A)"]
+    Beacon --> BPB["BeaconProxy (Pool B)"]
+    Beacon --> BPN["BeaconProxy (Pool N)"]
+    BPA -- delegatecall --> Impl["Vault Implementation v1"]
+    BPB -- delegatecall --> Impl
+    BPN -- delegatecall --> Impl
 ```
 
 - **Upgrade path**: `VaultManager.upgradeVaultImpl(newImpl)` calls `beacon.upgradeTo(newImpl)`, which atomically switches the implementation for all proxies.
@@ -239,15 +239,15 @@ When inlined in Vault, these operations consume ~1.3 KB of bytecode. By extracti
 
 **How it works:**
 
-```
-Vault._statusCalc(id)
-  ├─ reads position data from storage
-  ├─ computes virtual checkpoint (fee deltas, skew)
-  ├─ calculates tick move from midpoint
-  ├─ calls vaultMath.calcPositionIL(range, move, collateral)  ← external
-  │     └─ rpow, mulDiv, ilPercent, tickDiffPercent, triangular
-  ├─ applies skew (K-multiplier) to IL/fee
-  └─ returns (collateral, fee, il, kE18, result)
+```mermaid
+graph TD
+    SC["Vault._statusCalc(id)"] --> R["Read position data from storage"]
+    R --> VC["Compute virtual checkpoint<br/>(fee deltas, skew)"]
+    VC --> TM["Calculate tick move from midpoint"]
+    TM --> IL["vaultMath.calcPositionIL<br/>(range, move, collateral)<br/><i>external call</i>"]
+    IL --> ILsub["rpow, mulDiv, ilPercent,<br/>tickDiffPercent, triangular"]
+    TM --> SK["Apply skew (K-multiplier) to IL/fee"]
+    SK --> RET["Return (collateral, fee, il, kE18, result)"]
 ```
 
 ### Adding New Features
